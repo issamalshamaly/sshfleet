@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+printf 'LISTEN 0 4096 0.0.0.0:22 0.0.0.0:*\nLISTEN 0 511 127.0.0.1:3001 0.0.0.0:*\n'

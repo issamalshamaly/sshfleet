@@ -1,0 +1,46 @@
+# Stand-in for a real environment file: two bastions, mixed users, ProxyJump'd inner hosts.
+# Quirks copied from the real files on purpose: lowercase "Hostname", a trailing space after an
+# address, and inner hosts with no IdentityFile of their own.
+
+Host tst-bastion
+    HostName 203.0.113.10
+    User ubuntu
+    IdentityFile ~/.ssh/test.pem
+
+Host tst-jenkins-proxy
+    HostName 203.0.113.11
+    User ubuntu
+    IdentityFile ~/.ssh/test.pem
+
+Host tst-order
+    HostName 10.99.0.10
+    User ubuntu
+    ProxyJump tst-bastion
+
+Host tst-auth
+    Hostname 10.99.0.11
+    User ubuntu
+    ProxyJump tst-bastion
+
+Host tst-wallet
+    HostName 10.99.0.12
+    User ec2-user
+    ProxyJump tst-bastion
+
+Host tst-admin-dashboard
+    HostName 10.99.0.13
+    User ubuntu
+    ProxyJump tst-bastion
+
+Host tst-kong-mobile
+    HostName 203.0.113.20
+    User ubuntu
+    IdentityFile ~/.ssh/test.pem
+
+Host tst-jenkins
+    HostName 10.99.0.20
+    User ubuntu
+    ProxyJump tst-jenkins-proxy
+
+Host *
+    ServerAliveInterval 30

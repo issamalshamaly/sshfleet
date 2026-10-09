@@ -1,0 +1,35 @@
+{
+ "v": 1,
+ "host": "ip-10-99-0-20",
+ "now": 1757760000,
+ "uptime_s": 356400,
+ "kernel": "6.8.0-1029-aws",
+ "load": [
+  0.21,
+  0.18,
+  0.15
+ ],
+ "cpus": 2,
+ "mem_total": 4000000000,
+ "mem_avail": 1600000000,
+ "disks": [
+  {
+   "mount": "/",
+   "size": 100,
+   "used": 40,
+   "pct": 40
+  }
+ ],
+ "runtime": "none",
+ "sudo_ok": 1,
+ "runtime_error": "",
+ "containers": [],
+ "inspect": "",
+ "listening": [
+  22,
+  8080
+ ],
+ "probes": [],
+ "frontends": [],
+ "nginx": "absent"
+}

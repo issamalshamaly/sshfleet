@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""Fake ``ssh`` used by the test suite.
+
+Parses the argv sshfleet builds, then replays a fixture for the alias instead of connecting.
+Scenarios live in ``tests/fixtures/<scenario>/<alias>/`` and are selected with
+``SSHFLEET_FAKE_SCENARIO``. Every invocation is appended to ``SSHFLEET_FAKE_LOG`` so tests can
+assert on the exact commands that would have run.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+FIXTURES = Path(os.environ.get("SSHFLEET_FAKE_FIXTURES", "")).expanduser()
+SCENARIO = os.environ.get("SSHFLEET_FAKE_SCENARIO", "healthy")
+LOG = os.environ.get("SSHFLEET_FAKE_LOG")
+STATE = Path(os.environ.get("SSHFLEET_FAKE_STATE", "/tmp/sshfleet-fake-state.json"))
+
+# Options that take a separate value argument.
+VALUE_OPTS = {"-F", "-o", "-i", "-l", "-p", "-J", "-L", "-R", "-D", "-W", "-E", "-b", "-c", "-m", "-Q", "-S"}
+
+
+def parse(argv: list[str]) -> dict:
+    out: dict = {"control": None, "control_args": [], "opts": [], "alias": None, "remote": None, "config": None, "gflag": False}
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "--":
+            index += 1
+            break
+        if token == "-O":
+            out["control"] = argv[index + 1]
+            index += 2
+            continue
+        if token == "-G":
+            out["gflag"] = True
+            index += 1
+            continue
+        if token == "-F":
+            out["config"] = argv[index + 1]
+            index += 2
+            continue
+        if token in VALUE_OPTS:
+            out["opts"].append((token, argv[index + 1]))
+            if token == "-L":
+                out["control_args"].append(argv[index + 1])
+            index += 2
+            continue
+        if token.startswith("-"):
+            out["opts"].append((token, None))
+            index += 1
+            continue
+        break
+    rest = argv[index:]
+    if rest:
+        out["alias"] = rest[0]
+        if len(rest) > 1:
+            out["remote"] = " ".join(rest[1:])
+    return out
+
+
+def log(entry: dict) -> None:
+    if not LOG:
+        return
+    with open(LOG, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry) + "\n")
+
+
+def load_state() -> dict:
+    try:
+        return json.loads(STATE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_state(state: dict) -> None:
+    STATE.write_text(json.dumps(state))
+
+
+def host_dir(alias: str) -> Path:
+    return FIXTURES / SCENARIO / alias
+
+
+def fail(alias: str, message: str, code: int = 255) -> None:
+    sys.stderr.write(message.rstrip() + "\n")
+    sys.exit(code)
+
+
+def read_fixture(alias: str, name: str) -> str | None:
+    path = host_dir(alias) / name
+    if path.exists():
+        return path.read_text()
+    return None
+
+
+def main() -> None:
+    parsed = parse(sys.argv[1:])
+    alias = parsed["alias"] or ""
+    log({"alias": alias, "remote": parsed["remote"], "control": parsed["control"], "argv": sys.argv[1:]})
+
+    if parsed["gflag"]:
+        socket = os.environ.get("SSHFLEET_FAKE_CONTROL_DIR", "/tmp/sshfleet-fake-mux")
+        sys.stdout.write(f"user ubuntu\nhostname 10.0.0.1\ncontrolpath {socket}/{alias}\n")
+        sys.exit(0)
+
+    directory = host_dir(alias)
+    if not directory.is_dir():
+        fail(alias, f"ssh: Could not resolve hostname {alias}: Name or service not known")
+
+    # A fixture named error.txt turns every call for this alias into that failure.
+    error = read_fixture(alias, "error.txt")
+    if error is not None:
+        code_file = read_fixture(alias, "error.code")
+        fail(alias, error, int(code_file.strip()) if code_file else 255)
+
+    if parsed["control"]:
+        state = load_state()
+        masters = set(state.get("masters", []))
+        command = parsed["control"]
+        if command == "check":
+            sys.exit(0 if alias in masters else 255)
+        if command == "exit":
+            masters.discard(alias)
+            state["masters"] = sorted(masters)
+            save_state(state)
+            sys.exit(0)
+        if command in {"forward", "cancel"}:
+            forwards = set(state.get("forwards", []))
+            for spec in parsed["control_args"]:
+                forwards.add(spec) if command == "forward" else forwards.discard(spec)
+            state["forwards"] = sorted(forwards)
+            save_state(state)
+            sys.exit(0)
+        sys.exit(0)
+
+    state = load_state()
+    masters = set(state.get("masters", []))
+    masters.add(alias)
+    state["masters"] = sorted(masters)
+    save_state(state)
+
+    remote = parsed["remote"] or ""
+    if remote.strip() == "true" or not remote:
+        sys.exit(0)
+
+    # `bash -s` scripts arrive on stdin; dispatch on a marker comment in the script.
+    if "bash -s" in remote:
+        script = sys.stdin.read()
+        marker = "collect"
+        for line in script.splitlines():
+            if line.startswith("# sshfleet:"):
+                marker = line.split(":", 1)[1].strip()
+                break
+        body = read_fixture(alias, f"{marker}.json") or read_fixture(alias, f"{marker}.txt")
+        if body is None:
+            fail(alias, f"fake ssh: no fixture {marker} for {alias}", 1)
+        sys.stdout.write(body)
+        sys.exit(0)
+
+    # Plain remote commands: look for a fixture named after a sanitised form of the command.
+    safe = "".join(char if char.isalnum() else "_" for char in remote)[:80]
+    body = read_fixture(alias, f"cmd_{safe}.txt")
+    if body is not None:
+        sys.stdout.write(body)
+        sys.exit(0)
+    body = read_fixture(alias, "default.txt")
+    if body is not None:
+        sys.stdout.write(body)
+        sys.exit(0)
+    fail(alias, f"fake ssh: unhandled remote command for {alias}: {remote}", 127)
+
+
+if __name__ == "__main__":
+    main()

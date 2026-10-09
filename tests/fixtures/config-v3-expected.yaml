@@ -1,0 +1,136 @@
+version: 3
+environments:
+- name: staging
+  short: st
+  color: yellow
+  ssh_config_path: /tmp/staging
+  deploy_envs:
+  - staging
+  - rc
+  - development
+- name: production
+  short: prod
+  color: red
+  ssh_config_path: /tmp/production
+  deploy_envs:
+  - production
+probes:
+  discovered_path: /health/live
+frontends:
+  web_root: /var/www/html
+refresh:
+  fast_s: 60
+logs:
+  display_tz: Asia/Baghdad
+hosts:
+  st-bastion:
+    role: ops
+    label: jump
+  st-order-service:
+    role: service
+    main: true
+    label: order
+    health:
+      port: 3001
+      path: /
+    workloads: order-*
+    log_format: pino_pretty
+    log_sources:
+    - path: /usr/src/app/logs/access.log
+      format: pino_json
+      in_container: true
+    display: orders (staging)
+    tags:
+    - vip
+    expected_count: 3
+  st-wallet-service:
+    role: service
+    main: true
+    label: wallet
+    runtime: podman
+    sudo: false
+    health:
+      port: 8080
+      path: /health
+      min_interval_s: 900
+    workloads: ewallet-*
+    log_format: zap_console
+    log_sources:
+    - path: /home/app/logs/ewallet/staging/app.log
+      format: zap_json
+      rotated_glob: app-*.log
+  st-mobile-gateway:
+    role: gateway
+    main: true
+    label: gw-m
+    health:
+      port: 8001
+      path: /status
+    workloads: '*gateway*'
+  st-admin-dashboard:
+    role: frontend
+    label: dashboard
+    runtime: none
+    web_root: /var/www/html
+  st-legacy:
+    role: service
+    label: legacy
+    workloads: legacy-*
+  st-unmatched:
+    role: service
+  prod-bastion:
+    role: ops
+    label: jump
+  prod-order:
+    role: service
+    main: true
+    label: order
+    health:
+      port: 3001
+      path: /
+    workloads: order-production
+    log_format: pino_pretty
+    log_sources:
+    - path: /usr/src/app/logs/access.log
+      format: pino_json
+      in_container: true
+  prod-wallet:
+    role: service
+    main: true
+    label: wallet
+    runtime: podman
+    sudo: false
+    health:
+      port: 8080
+      path: /health
+      min_interval_s: 60
+    workloads: ewallet-production
+    log_format: zap_console
+    log_sources:
+    - path: /home/app/logs/ewallet/production/app.log
+      format: zap_json
+      rotated_glob: app-*.log
+  prod-mobile-gateway:
+    role: gateway
+    main: true
+    label: gw-m
+    health:
+      port: 8001
+      path: /status
+    workloads: '*gateway*'
+  prod-oddball:
+    role: service
+    main: true
+    label: order
+    runtime: docker
+    health:
+      port: 3001
+      path: /
+    workloads: order-production
+    log_format: pino_pretty
+    log_sources:
+    - path: /usr/src/app/logs/access.log
+      format: pino_json
+      in_container: true
+  gone-from-ssh:
+    display: retired

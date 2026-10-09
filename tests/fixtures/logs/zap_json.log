@@ -1,0 +1,2 @@
+{"level":"info","ts":"2026-09-13T10:50:51.709Z","caller":"handler/health.go:42","msg":"health ok"}
+{"level":"error","ts":"2026-09-13T10:50:52.100+03:00","caller":"service/wallet.go:118","msg":"grant failed"}

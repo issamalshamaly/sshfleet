@@ -1,0 +1,115 @@
+version: 2
+environments:
+- name: staging
+  short: st
+  color: yellow
+  ssh_config_path: /tmp/staging
+  deploy_envs:
+  - staging
+  - rc
+  - development
+- name: production
+  short: prod
+  color: red
+  ssh_config_path: /tmp/production
+  deploy_envs:
+  - production
+naming:
+  deploy_envs:
+  - production
+  - staging
+  - rc
+  - development
+  container_template: '{container}-{deploy_env}'
+  unsuffixed_deploy_envs:
+  - production
+  - staging
+  ports_by_deploy_env:
+    staging: 3001
+probes:
+  discovered_path: /health/live
+frontends:
+  web_root: /var/www/html
+main_services:
+- order
+- wallet
+- gateway-mobile
+services:
+  order:
+    role: service
+    deployed: true
+    container: order
+    port: 3001
+    health_path: /
+    network_host: true
+    log_format: pino_pretty
+    container_file: /usr/src/app/logs/access.log
+    container_file_format: pino_json
+    aliases:
+    - order
+    - order-service
+  wallet:
+    role: service
+    deployed: true
+    container: ewallet
+    port: 8080
+    health_path: /health
+    runtime: podman
+    sudo: false
+    probe_min_interval_s: 60
+    log_format: zap_console
+    log_files:
+    - /home/app/logs/ewallet/{deploy_env}/app.log
+    log_file_format: zap_json
+    log_file_rotated_glob: app-*.log
+    aliases:
+    - wallet
+    - wallet-service
+  gateway-mobile:
+    role: gateway
+    label: gw-m
+    port: 8001
+    health_path: /status
+    container_glob: '*gateway*'
+    aliases:
+    - gateway-mobile
+    - mobile-gateway
+  dashboard:
+    role: frontend
+    runtime: none
+    web_root: /var/www/html
+    aliases:
+    - dashboard
+    - admin-dashboard
+  legacy:
+    role: service
+    deployed: true
+    container: legacy
+    deprecated: true
+    aliases:
+    - legacy
+  jump:
+    role: ops
+    aliases:
+    - bastion
+    - jump
+hosts:
+  st-wallet-service:
+    health:
+      min_interval_s: 900
+  st-order-service:
+    display: orders (staging)
+    tags:
+    - vip
+    expected_count: 3
+  prod-oddball:
+    service: order
+    runtime: docker
+  gone-from-ssh:
+    display: retired
+    expected_containers:
+    - x-production
+refresh:
+  fast_s: 60
+logs:
+  display_tz: Asia/Baghdad

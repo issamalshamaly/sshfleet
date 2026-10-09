@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    *:3001/health/live) printf '200'; exit 0 ;;
+    *:8080/health) printf '200'; exit 0 ;;
+    *:9999*) printf '000'; exit 0 ;;
+  esac
+done
+printf '000'

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Fake `docker` for testing collect.sh. Shape copied from real `docker ps -a --format json`
+# output: one JSON object per line, Names is a string, Networks is a string.
+case "$1" in
+  ps)
+    if [[ "$*" == *"-aq"* ]]; then printf 'abc123\ndef456\n'; exit 0; fi
+    cat <<'JSON'
+{"Command":"node dist/main","CreatedAt":"2026-09-10 08:00:00 +0000 UTC","ID":"abc123","Image":"exampleorg/order:production","Names":"order-production","Networks":"host","Ports":"","State":"running","Status":"Up 3 days"}
+{"Command":"node dist/main","CreatedAt":"2026-08-01 08:00:00 +0000 UTC","ID":"def456","Image":"exampleorg/loyalty:production","Names":"loyalty-production","Networks":"bridge","Ports":"0.0.0.0:3001->3001/tcp","State":"exited","Status":"Exited (137) 2 weeks ago"}
+JSON
+    ;;
+  inspect)
+    printf '/order-production\texampleorg/order:production\tsha256:aaa\t2026-09-10T08:00:00Z\t2026-09-10T08:00:05Z\t0\t0\thost\t/var/lib/docker/containers/abc/abc-json.log\n'
+    printf '/loyalty-production\texampleorg/loyalty:production\tsha256:bbb\t2026-08-01T08:00:00Z\t2026-08-01T08:00:05Z\t137\t2\tbridge\t/var/lib/docker/containers/def/def-json.log\n'
+    ;;
+  *) exit 1 ;;
+esac

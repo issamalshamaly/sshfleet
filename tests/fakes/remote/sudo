@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+[[ "$1" == "-n" ]] && shift
+[[ "$1" == "true" && $# -eq 1 ]] && exit 0
+exec "$@"

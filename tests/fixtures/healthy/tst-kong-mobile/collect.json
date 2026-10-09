@@ -1,0 +1,53 @@
+{
+ "v": 1,
+ "host": "ip-203-0-113-20",
+ "now": 1757760000,
+ "uptime_s": 356400,
+ "kernel": "6.8.0-1029-aws",
+ "load": [
+  0.21,
+  0.18,
+  0.15
+ ],
+ "cpus": 2,
+ "mem_total": 4000000000,
+ "mem_avail": 1600000000,
+ "disks": [
+  {
+   "mount": "/",
+   "size": 100,
+   "used": 40,
+   "pct": 40
+  }
+ ],
+ "runtime": "docker",
+ "sudo_ok": 1,
+ "runtime_error": "",
+ "containers": [
+  {
+   "ID": "kong-m",
+   "Names": "kong-mobile",
+   "Image": "kong:3.7",
+   "Networks": "bridge",
+   "Ports": "0.0.0.0:8000->8000/tcp",
+   "State": "running",
+   "Status": "Up 3 days",
+   "CreatedAt": "2026-09-10 08:00:00 +0000 UTC"
+  }
+ ],
+ "inspect": "/kong-mobile\tkong:3.7\tsha256:abc\t2026-09-10T08:00:00Z\t2026-09-10T08:00:05Z\t0\t0\tbridge\t/var/lib/docker/containers/x/x-json.log",
+ "listening": [
+  22,
+  8000,
+  8001
+ ],
+ "probes": [
+  {
+   "port": 8001,
+   "path": "/status",
+   "code": "200"
+  }
+ ],
+ "frontends": [],
+ "nginx": "absent"
+}

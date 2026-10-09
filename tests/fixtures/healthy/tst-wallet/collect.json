@@ -1,0 +1,60 @@
+{
+ "v": 1,
+ "host": "ip-10-99-0-12",
+ "now": 1757760000,
+ "uptime_s": 356400,
+ "kernel": "6.8.0-1029-aws",
+ "load": [
+  0.21,
+  0.18,
+  0.15
+ ],
+ "cpus": 2,
+ "mem_total": 4000000000,
+ "mem_avail": 1600000000,
+ "disks": [
+  {
+   "mount": "/",
+   "size": 100,
+   "used": 40,
+   "pct": 40
+  }
+ ],
+ "runtime": "podman",
+ "sudo_ok": 1,
+ "runtime_error": "",
+ "containers": [
+  {
+   "Id": "w1",
+   "Names": [
+    "ewallet-production"
+   ],
+   "Image": "docker.io/exampleorg/ewallet:production",
+   "Ports": [
+    {
+     "host_ip": "",
+     "host_port": 8080,
+     "container_port": 8080,
+     "protocol": "tcp"
+    }
+   ],
+   "State": "running",
+   "Status": "Up 5 days",
+   "Created": 1757500000
+  }
+ ],
+ "inspect": "/ewallet-production\tdocker.io/exampleorg/ewallet:production\tsha256:abc\t2026-09-10T08:00:00Z\t2026-09-10T08:00:05Z\t0\t0\tbridge\t/home/ec2-user/logs/ewallet/production/app.log",
+ "listening": [
+  22,
+  8080
+ ],
+ "probes": [
+  {
+   "port": 8080,
+   "path": "/health",
+   "code": "200"
+  }
+ ],
+ "frontends": [],
+ "nginx": "absent"
+}

@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --all-extras
+      - run: uv run ruff check src tests
+      - run: uv run pytest -q
+      - run: bash scripts/check-secrets.sh
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm typecheck
+        working-directory: web
+      - run: pnpm build
+        working-directory: web
+      - name: the committed bundle must match the source
+        run: git diff --exit-code --stat -- src/sshfleet/web/static || (echo "rebuild src/sshfleet/web/static and commit it" && exit 1)

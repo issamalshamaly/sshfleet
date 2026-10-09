@@ -1,0 +1,172 @@
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--mantine-color-dark-8);
+}
+
+.mono {
+  font-family: var(--mantine-font-family-monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rows in the fleet table are clickable; make that obvious without a hover colour shift that
+   fights the status colours. */
+.host-row {
+  cursor: pointer;
+}
+/* The page body is a fixed-height flex column, so a banner or a heading placed in it was a flex
+   item that could be *shrunk* to fit rather than pushed out of view — an alert lost its body text
+   and kept a clipped title, with nothing to scroll to. Children keep their natural height here;
+   the one element per page that should absorb the leftover space says so with its own `flex: 1`,
+   which is inline and wins over this rule. */
+.app-main > * {
+  flex-shrink: 0;
+}
+
+/* A whole card that is one click target. .host-row only paints table cells, so a Card wearing
+   it looked clickable and gave no feedback at all. */
+.clickable-card {
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.clickable-card:hover {
+  border-color: var(--mantine-color-dark-3);
+  background-color: var(--mantine-color-dark-6);
+}
+
+.host-row:hover td {
+  background: var(--mantine-color-dark-6);
+}
+.host-row[data-selected="true"] td {
+  background: var(--mantine-color-dark-5);
+}
+
+/* Log viewer */
+.log-viewer {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12.5px;
+  line-height: 20px;
+  white-space: pre;
+  overflow: auto;
+  background: var(--mantine-color-dark-8);
+  border: 1px solid var(--mantine-color-dark-5);
+  border-radius: var(--mantine-radius-md);
+}
+.log-viewer.wrap .log-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-line {
+  display: flex;
+  gap: 10px;
+  padding: 0 10px;
+  min-height: 20px;
+}
+.log-line.context {
+  color: var(--mantine-color-dark-2);
+}
+.log-line.match {
+  background: color-mix(in srgb, var(--mantine-color-yellow-9) 12%, transparent);
+}
+.log-line.continuation .log-text {
+  color: var(--mantine-color-dark-1);
+}
+.log-line.entry-start {
+  border-top: 1px solid var(--mantine-color-dark-6);
+}
+.log-label {
+  flex: 0 0 74px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log-ts {
+  flex: 0 0 96px;
+  color: var(--mantine-color-dark-2);
+}
+.log-text {
+  flex: 1 1 auto;
+}
+.log-text mark {
+  background: var(--mantine-color-yellow-6);
+  color: var(--mantine-color-dark-9);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* xterm fills its container */
+.terminal-host {
+  height: 100%;
+  background: #0b0f14;
+  border-radius: var(--mantine-radius-md);
+  padding: 8px;
+}
+.terminal-host .xterm {
+  height: 100%;
+}
+
+/* Metric bars in the host panel */
+.metric {
+  display: grid;
+  grid-template-columns: 84px 1fr 104px;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+/* Subtle pulse for the live indicator */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mantine-color-teal-5);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+.live-dot.off {
+  background: var(--mantine-color-red-6);
+  animation: none;
+}
+
+/* Short values stay on one line; badges keep their full text instead of collapsing to "P…". */
+.nowrap,
+.nowrap * {
+  white-space: nowrap;
+}
+.mantine-Badge-root {
+  flex-shrink: 0;
+  max-width: none;
+}
+.mantine-Badge-label {
+  overflow: visible;
+}
+
+/* Log source picker: one line per source, elided rather than scrolled sideways. */
+.source-check .mantine-Checkbox-body,
+.source-check .mantine-Checkbox-labelWrapper {
+  min-width: 0;
+}
+.source-check .mantine-Checkbox-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

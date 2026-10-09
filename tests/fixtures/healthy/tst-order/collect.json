@@ -1,0 +1,52 @@
+{
+ "v": 1,
+ "host": "ip-10-99-0-10",
+ "now": 1757760000,
+ "uptime_s": 356400,
+ "kernel": "6.8.0-1029-aws",
+ "load": [
+  0.21,
+  0.18,
+  0.15
+ ],
+ "cpus": 2,
+ "mem_total": 4000000000,
+ "mem_avail": 1600000000,
+ "disks": [
+  {
+   "mount": "/",
+   "size": 100,
+   "used": 40,
+   "pct": 40
+  }
+ ],
+ "runtime": "docker",
+ "sudo_ok": 1,
+ "runtime_error": "",
+ "containers": [
+  {
+   "ID": "order-",
+   "Names": "order-production",
+   "Image": "exampleorg/order:production",
+   "Networks": "host",
+   "Ports": "",
+   "State": "running",
+   "Status": "Up 3 days",
+   "CreatedAt": "2026-09-10 08:00:00 +0000 UTC"
+  }
+ ],
+ "inspect": "/order-production\texampleorg/order:production\tsha256:abc\t2026-09-10T08:00:00Z\t2026-09-10T08:00:05Z\t0\t0\thost\t/var/lib/docker/containers/x/x-json.log",
+ "listening": [
+  22,
+  3001
+ ],
+ "probes": [
+  {
+   "port": 3001,
+   "path": "/",
+   "code": "200"
+  }
+ ],
+ "frontends": [],
+ "nginx": "absent"
+}

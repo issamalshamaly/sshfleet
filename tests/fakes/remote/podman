@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Fake `podman`: note the shape differs from docker — ps returns a JSON *array*, Names is a
+# list, Ports is a list of objects, and the inspect log path lives elsewhere.
+case "$1" in
+  ps)
+    if [[ "$*" == *"-aq"* ]]; then printf 'w1\n'; exit 0; fi
+    cat <<'JSON'
+[{"Command":["/app/ewallet"],"Created":1757500000,"Id":"w1","Image":"docker.io/exampleorg/ewallet:production","Names":["ewallet-production"],"Ports":[{"host_ip":"","host_port":8080,"container_port":8080,"protocol":"tcp"}],"State":"running","Status":"Up 5 days"}]
+JSON
+    ;;
+  inspect)
+    # The docker-style .LogPath is empty on podman; collect.sh retries with the other field.
+    if [[ "$*" == *".LogPath"* ]]; then exit 0; fi
+    printf '/ewallet-production\tdocker.io/exampleorg/ewallet:production\tsha256:ccc\t2026-09-08T08:00:00Z\t2026-09-08T08:00:05Z\t0\t0\tbridge\t/home/ec2-user/.local/share/containers/storage/w1/ctr.log\n'
+    ;;
+  *) exit 1 ;;
+esac

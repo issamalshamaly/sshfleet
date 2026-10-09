@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""A stand-in for ``ssh`` that never finishes: used to test timeouts and cancellation.
+
+It ignores its arguments (real ssh options would confuse ``sleep``) and installs no signal
+handlers, so the runner's kill path is what actually stops it.
+"""
+
+import sys
+import time
+
+duration = float(sys.argv[-1]) if sys.argv[-1].replace(".", "", 1).isdigit() else 60.0
+time.sleep(duration)

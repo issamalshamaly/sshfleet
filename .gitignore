@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# frontend (web/) — build output is committed into the Python package, dependencies are not
+web/node_modules/
+web/dist/
+web/.vite/
+web/*.tsbuildinfo
+web/node_modules/.tmp/
+
+# browser automation snapshots (may contain live log output)
+.playwright-cli/
+
+# private patterns for scripts/check-secrets.sh
+.check-secrets.local

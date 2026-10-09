@@ -1,0 +1,2 @@
+2026-09-13T10:52:01+0000 ip-10-0-1-30 dockerd[1234]: level=info msg="container started"
+2026-09-13T10:52:09+0000 ip-10-0-1-30 dockerd[1234]: level=error msg="health check failed"

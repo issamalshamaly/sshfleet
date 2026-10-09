@@ -1,0 +1,4 @@
+2026-09-13T10:50:51.709Z	[34mINFO[0m	handler/health.go:42	Health check passed
+2026-09-13T10:50:52.100Z	[31mERROR[0m	service/wallet.go:118	grant failed	{"txId": 991}
+goroutine 1 [running]:
+	main.main()

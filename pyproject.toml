@@ -1,0 +1,91 @@
+[project]
+name = "sshfleet"
+version = "0.1.0"
+description = "Fleet monitor and support tool for servers reached over SSH: status, containers, logs, files, tunnels"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Issam Alshamaly" }]
+requires-python = ">=3.12"
+keywords = ["ssh", "fleet", "monitoring", "docker", "podman", "logs", "devops", "sre"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "textual>=8.2,<9",
+    "typer>=0.27",
+    "httpx>=0.28",
+    "pyyaml>=6",
+    "rich>=15",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.4",
+    "python-multipart>=0.0.32",
+]
+
+[project.scripts]
+sshfleet = "sshfleet.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/issamalshamaly/sshfleet"
+Issues = "https://github.com/issamalshamaly/sshfleet/issues"
+
+[project.optional-dependencies]
+serve = ["textual-serve>=1.1"]
+desktop = [
+    "pywebview>=6.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "pytest-asyncio>=1.4",
+    "textual-dev>=1.8",
+    "ruff>=0.14",
+    "mypy>=1.14",
+    "types-pyyaml>=6",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.10"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "live: talks to real servers; requires SSHFLEET_LIVE_ENV and is skipped otherwise",
+]
+filterwarnings = ["error::DeprecationWarning:sshfleet.*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "E501",
+    # En dashes and box-drawing characters are deliberate in operator-facing output.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # BINDINGS / COMMANDS are Textual's documented class-attribute API.
+    "RUF012",
+]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["sshfleet"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true

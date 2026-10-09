@@ -1,0 +1,99 @@
+"""The object graph shared by the CLI and the TUI.
+
+Building a Context parses the config and the SSH config files and writes the generated
+``ssh_config``; it opens no connection, so it is cheap enough for ``--help``-style commands.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from .audit import AuditLog
+from .config import Config, ConfigError, migrate
+from .config import loader as config_loader
+from .inventory import Inventory, build_inventory
+from .paths import Paths
+from .ssh import MuxManager, SshRunner
+
+
+@dataclass(slots=True)
+class Context:
+    paths: Paths
+    config: Config
+    inventory: Inventory
+    mux: MuxManager
+    audit: AuditLog
+    warnings: list[str] = field(default_factory=list)
+    _runner: SshRunner | None = None
+
+    @property
+    def runner(self) -> SshRunner:
+        """Created lazily: it allocates asyncio primitives, so it needs a running loop."""
+        if self._runner is None:
+            self._runner = SshRunner(self.mux, self.inventory, self.config.concurrency)
+        return self._runner
+
+    @property
+    def download_dir(self) -> Path:
+        configured = self.config.files.download_dir
+        if configured and configured != "auto":
+            return Path(configured).expanduser()
+        return self.paths.download_dir
+
+    def reload(self) -> Context:
+        return build_context(self.paths, write_ssh_config=True)
+
+    def load_secrets(self) -> int:
+        """Read ``secrets.env`` into the process environment. Refuses a world-readable file."""
+        path = self.paths.secrets_file
+        if not path.exists():
+            return 0
+        mode = path.stat().st_mode & 0o777
+        if mode & 0o077:
+            self.warnings.append(f"{path} is mode {mode:04o}; run `chmod 600 {path}` — not loaded")
+            return 0
+        loaded = 0
+        for line in path.read_text(errors="replace").splitlines():
+            text = line.strip()
+            if not text or text.startswith("#") or "=" not in text:
+                continue
+            key, _, value = text.partition("=")
+            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+            loaded += 1
+        return loaded
+
+
+def build_context(paths: Paths | None = None, *, write_ssh_config: bool = True) -> Context:
+    resolved = paths or Paths.detect()
+    warnings: list[str] = []
+    resolved.ensure()
+
+    # An older file is brought to the current layout once, atomically, keeping a backup.
+    note = migrate.upgrade(resolved.config_file)
+    if note:
+        warnings.append(note)
+    config = config_loader.load(resolved.config_file)
+
+    try:
+        inventory = build_inventory(config)
+        warnings.extend(inventory.warnings)
+    except (FileNotFoundError, ConfigError) as exc:
+        warnings.append(str(exc))
+        inventory = Inventory()
+
+    mux = MuxManager(config, resolved, inventory)
+    if write_ssh_config and config.environments:
+        mux.write_ssh_config()
+
+    context = Context(
+        paths=resolved,
+        config=config,
+        inventory=inventory,
+        mux=mux,
+        audit=AuditLog(resolved.audit_file),
+        warnings=warnings,
+    )
+    context.load_secrets()
+    return context
