@@ -5,13 +5,14 @@ import {
   Card,
   Checkbox,
   Divider,
-  Drawer,
   Group,
   Loader,
+  Menu,
   NumberInput,
   ScrollArea,
   SegmentedControl,
   Select,
+  SimpleGrid,
   Stack,
   Switch,
   Text,
@@ -22,6 +23,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   IconArchive,
+  IconDots,
   IconDownload,
   IconPlayerPause,
   IconPlayerPlay,
@@ -34,8 +36,10 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { LogSelection, LogSourceInfo } from "../api/types";
 import { EmptyState, SearchInput } from "../components/common";
+import { InfoTip, ResponsiveDrawer } from "../components/responsive";
 import { useConfig } from "../hooks/useFleet";
 import { fmtBytes, fmtDateTime, fmtLogTime } from "../lib/format";
+import { useIsCompact, useIsPhone, useNoHover } from "../lib/responsive";
 import { useEnv } from "../state/env";
 import { seedFromParams, useLogsEngine, useLogsStore, type LogsSnapshot } from "../state/logs";
 import { envColor } from "../theme";
@@ -186,7 +190,14 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
   // on another page and are still there when you come back. This page only shows them.
   const engine = useLogsEngine();
   const { lines, sourceStates, summary, running, stop, reset } = engine;
-  const [wrap, setWrap] = useState(initial.wrap);
+  // Below md the query and the results take turns on the screen; on a phone each log line puts
+  // its source and time above its text, and wraps by default: a 360px line of `pre` is mostly
+  // sideways scrolling.
+  const compact = useIsCompact();
+  const phone = useIsPhone();
+  const noHover = useNoHover();
+  const [pane, setPane] = useState<"query" | "results">(initial.pane);
+  const [wrap, setWrap] = useState(() => (initial.restored ? initial.wrap : initial.wrap || phone));
   const [matchesOnly, setMatchesOnly] = useState(initial.matchesOnly);
   const [useUtc, setUseUtc] = useState(initial.useUtc);
   const [bundlesOpen, setBundlesOpen] = useState(false);
@@ -215,6 +226,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
 
   const run = (download = false) => {
     if (!env || window === null) return;
+    setPane("results");
     void engine.search({
       env,
       selection,
@@ -233,6 +245,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
 
   const startFollow = () => {
     if (!env) return;
+    setPane("results");
     void engine.follow({ env, selection, pattern, since: "1m" });
   };
 
@@ -261,6 +274,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
     matchesOnly,
     useUtc,
     scrollTop: scrollTop.current,
+    pane,
     restored: true,
   };
 
@@ -276,10 +290,14 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
   // ---------------------------------------------------------- virtual list
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  // A stacked line is two rows tall: source and time, then the text. A continuation line has
+  // neither label nor time, so it stays one row. Fixed heights still, so nothing is measured.
+  const stacked = phone;
+  const rowHeight = (index: number) => (stacked && !visible[index]?.cont ? 38 : 20);
   const virtualizer = useVirtualizer({
     count: visible.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 20,
+    estimateSize: rowHeight,
     overscan: 30,
     // So the first render already draws the lines you were reading, not the top of the list.
     initialOffset: initial.scrollTop,
@@ -290,6 +308,18 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
   useLayoutEffect(() => {
     if (initial.scrollTop && scrollRef.current) scrollRef.current.scrollTop = initial.scrollTop;
   }, [initial.scrollTop]);
+  // Turning the phone changes every row's height: keep the first line in view where it was.
+  const lastLayout = useRef(`${stacked}:${wrap}`);
+  useEffect(() => {
+    const layout = `${stacked}:${wrap}`;
+    if (lastLayout.current === layout) return;
+    lastLayout.current = layout;
+    // The first row actually in view: the list also draws `overscan` rows above it.
+    const offset = virtualizer.scrollOffset ?? 0;
+    const first = virtualizer.getVirtualItems().find((item) => item.end > offset)?.index;
+    virtualizer.measure();
+    if (first !== undefined) virtualizer.scrollToIndex(first, { align: "start" });
+  }, [stacked, wrap, virtualizer]);
   useEffect(() => {
     if (running === "follow" && stickToBottom.current && visible.length) {
       virtualizer.scrollToIndex(visible.length - 1, { align: "end" });
@@ -339,9 +369,34 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
   return (
     // Full height, nothing taller: the query column and the results scroll separately, so
     // neither the sources you picked nor the match count ever scrolls out of reach.
-    <Group align="stretch" gap="md" wrap="nowrap" style={{ flex: 1, minHeight: 0, height: "100%" }}>
+    // Below md the two columns take turns: both stay mounted, the other one only hidden, so the
+    // results keep their scroll and the form its contents while you switch. The tree is the same
+    // at every width, so turning a tablet never remounts anything.
+    <div className="logs-page" data-layout={compact ? "panes" : "columns"}>
+      {compact && (
+        <SegmentedControl
+          fullWidth
+          value={pane}
+          onChange={(value) => setPane(value as "query" | "results")}
+          data={[
+            { value: "query", label: "Query" },
+            {
+              value: "results",
+              label:
+                running === "follow"
+                  ? "Results · live"
+                  : running
+                    ? "Results · searching…"
+                    : summary
+                      ? `Results · ${totalMatches.toLocaleString()} matches`
+                      : "Results",
+            },
+          ]}
+        />
+      )}
+      <div className="logs-panes">
       {/* ------------------------------------------------------- left column */}
-      <Stack gap="md" w={370} style={{ flexShrink: 0, minHeight: 0 }}>
+      <Stack gap="md" className="logs-query" data-hidden={(compact && pane !== "query") || undefined} inert={compact && pane !== "query"}>
         {/* Takes the height it needs and no more, so on a tall screen the buttons sit right
             under the query instead of miles below it; on a short one it shrinks and scrolls. */}
         <Stack gap="md" style={{ flex: "0 1 auto", minHeight: 0, overflowY: "auto", paddingRight: 6, paddingBottom: 6 }}>
@@ -362,7 +417,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
                   {globalEnv}
                 </Badge>
                 <Text size="xs" c="dimmed">
-                  · chosen in the sidebar
+                  · chosen {phone ? "at the top" : "in the sidebar"}
                 </Text>
               </Group>
             ) : (
@@ -437,7 +492,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
             ) : (
               <>
                 <SearchInput size="xs" placeholder="Filter hosts…" value={hostFilter} onChange={setHostFilter} />
-                <ScrollArea h="min(360px, 34vh)" type="auto" scrollbars="y" offsetScrollbars>
+                <ScrollArea h={compact ? "min(360px, 45dvh)" : "min(360px, 34vh)"} type="auto" scrollbars="y" offsetScrollbars>
                   <Stack gap={6} pb={6}>
                     {filteredHosts.map((h) => {
                       // Ticking the host means "every running container on it". Its containers
@@ -574,17 +629,31 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
                   {cap.label}
                 </Button>
               ))}
-              <Tooltip label="A busy workload can write far more than this in an hour. The newest lines are kept and the source is marked truncated." multiline maw={320}>
+              <InfoTip label="A busy workload can write far more than this in an hour. The newest lines are kept and the source is marked truncated." multiline maw={320}>
                 <Text size="xs" c="dimmed" style={{ cursor: "help" }}>
                   newest first
                 </Text>
-              </Tooltip>
+              </InfoTip>
             </Group>
             {preset === "custom" && (
-              <Group gap="sm" grow>
-                <DateTimePicker size="sm" label="From" value={since} onChange={(v) => setSince(v ? new Date(v) : null)} withSeconds />
-                <DateTimePicker size="sm" label="To" value={until} onChange={(v) => setUntil(v ? new Date(v) : null)} withSeconds />
-              </Group>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                <DateTimePicker
+                  size="sm"
+                  label="From"
+                  value={since}
+                  onChange={(v) => setSince(v ? new Date(v) : null)}
+                  withSeconds
+                  dropdownType={phone ? "modal" : "popover"}
+                />
+                <DateTimePicker
+                  size="sm"
+                  label="To"
+                  value={until}
+                  onChange={(v) => setUntil(v ? new Date(v) : null)}
+                  withSeconds
+                  dropdownType={phone ? "modal" : "popover"}
+                />
+              </SimpleGrid>
             )}
           </Stack>
         </Card>
@@ -609,6 +678,36 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
                 </div>
               </Tooltip>
             )}
+            {noHover ? (
+              // No tooltips to say what three bare icons do: Follow says so, the rest are in a menu.
+              <>
+                <Button
+                  variant={running === "follow" ? "filled" : "default"}
+                  color="teal"
+                  leftSection={running === "follow" ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}
+                  onClick={running === "follow" ? stop : () => void startFollow()}
+                  disabled={!hasSources && running !== "follow"}
+                >
+                  {running === "follow" ? "Pause" : "Follow"}
+                </Button>
+                <Menu position="top-end" withinPortal>
+                  <Menu.Target>
+                    <ActionIcon size="lg" variant="default" aria-label="more log actions">
+                      <IconDots size={18} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item leftSection={<IconDownload size={16} />} disabled={!!running || !ready} onClick={() => void run(true)}>
+                      Search and save as a bundle
+                    </Menu.Item>
+                    <Menu.Item leftSection={<IconArchive size={16} />} onClick={() => setBundlesOpen(true)}>
+                      Saved bundles
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              </>
+            ) : (
+              <>
             <Tooltip label={running === "follow" ? "Stop following" : hasSources ? "Follow live output" : pickReason} multiline maw={260} position="top">
               <div>
                 <ActionIcon
@@ -636,6 +735,8 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
                 <IconArchive size={18} />
               </ActionIcon>
             </Tooltip>
+              </>
+            )}
           </Group>
           {!ready && !running && (
             <Text size="xs" c="dimmed" mt={8} ta="center">
@@ -646,7 +747,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
       </Stack>
 
       {/* ------------------------------------------------------ right column */}
-      <Stack gap="sm" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+      <Stack gap="sm" className="logs-results" data-hidden={(compact && pane !== "results") || undefined} inert={compact && pane !== "results"}>
         <Card withBorder padding="sm">
           <Group justify="space-between" wrap="wrap" gap="sm">
             <Group gap="sm">
@@ -674,7 +775,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
           {Object.keys(sourceStates).length > 0 && (
             <Group gap={6} mt="sm" wrap="wrap">
               {Object.entries(sourceStates).map(([id, s]) => (
-                <Tooltip key={id} label={s.message ?? `${s.lines} lines · ${fmtBytes(s.bytes)}`} disabled={!s.message && !s.lines}>
+                <InfoTip key={id} label={s.message ?? `${s.lines} lines · ${fmtBytes(s.bytes)}`} disabled={!s.message && !s.lines}>
                   <Badge
                     variant={s.state === "error" ? "filled" : "light"}
                     color={s.state === "error" ? "red" : s.state === "truncated" || s.state === "partial" ? "yellow" : labelColor(s.label, labels)}
@@ -685,18 +786,36 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
                   >
                     {s.label}
                   </Badge>
-                </Tooltip>
+                </InfoTip>
               ))}
             </Group>
           )}
+          {/* Without hover a failed or cut-short source must say why where it can be read. */}
+          {Object.values(sourceStates).some((s) => s.message && s.state !== "running") && (
+            <Stack gap={2} mt={6} className="touch-only">
+              {Object.entries(sourceStates)
+                .filter(([, s]) => s.message && s.state !== "running")
+                .map(([id, s]) => (
+                  <Text key={id} size="xs" c={s.state === "error" ? "red.4" : "yellow.4"} style={{ overflowWrap: "anywhere" }}>
+                    <Text span inherit className="mono" fw={600}>
+                      {s.label}
+                    </Text>
+                    : {s.message}
+                  </Text>
+                ))}
+            </Stack>
+          )}
         </Card>
 
-        <div ref={scrollRef} onScroll={onScroll} className={`log-viewer ${wrap ? "wrap" : ""}`} style={{ flex: 1, minHeight: 0 }}>
+        <div ref={scrollRef} onScroll={onScroll} className={`log-viewer ${wrap ? "wrap" : ""} ${stacked ? "stacked" : ""}`} style={{ flex: 1, minHeight: 0 }}>
           {visible.length === 0 ? (
-            <EmptyState
-              title={running ? "Waiting for the first lines…" : summary ? "No lines matched" : "Search across services in one time window"}
-              hint={running ? undefined : summary ? "Widen the window, loosen the pattern, or check the source chips above." : "Pick the sources, type a pattern, choose a window, then press Search or Enter."}
-            />
+            // The viewer is `white-space: pre` for log lines; this sentence must wrap to its width.
+            <div style={{ whiteSpace: "normal" }}>
+              <EmptyState
+                title={running ? "Waiting for the first lines…" : summary ? "No lines matched" : "Search across services in one time window"}
+                hint={running ? undefined : summary ? "Widen the window, loosen the pattern, or check the source chips above." : "Pick the sources, type a pattern, choose a window, then press Search or Enter."}
+              />
+            </div>
           ) : (
             <div style={{ height: virtualizer.getTotalSize(), position: "relative", minWidth: "100%" }}>
               {virtualizer.getVirtualItems().map((item) => {
@@ -709,7 +828,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
                     ref={wrap ? virtualizer.measureElement : undefined}
                     data-index={item.index}
                     className={`log-line ${line.match ? "match" : "context"} ${line.cont ? "continuation" : ""} ${entryStart ? "entry-start" : ""}`}
-                    style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${item.start}px)`, ...(wrap ? {} : { height: 20 }) }}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${item.start}px)`, ...(wrap ? {} : { height: rowHeight(item.index) }) }}
                   >
                     <span className="log-label" style={{ color: `var(--mantine-color-${labelColor(line.label, labels)}-4)` }}>
                       {line.cont ? "" : line.label}
@@ -725,16 +844,17 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
           )}
         </div>
       </Stack>
+      </div>
 
       <BundlesDrawer opened={bundlesOpen} onClose={() => setBundlesOpen(false)} />
-    </Group>
+    </div>
   );
 }
 
 function BundlesDrawer({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const bundles = useQuery({ queryKey: ["bundles"], queryFn: api.logs.bundles, enabled: opened });
   return (
-    <Drawer opened={opened} onClose={onClose} position="right" size="lg" title="Saved bundles">
+    <ResponsiveDrawer opened={opened} onClose={onClose} position="right" size="lg" title="Saved bundles">
       {bundles.isLoading ? (
         <Loader />
       ) : !bundles.data?.length ? (
@@ -761,6 +881,6 @@ function BundlesDrawer({ opened, onClose }: { opened: boolean; onClose: () => vo
           ))}
         </Stack>
       )}
-    </Drawer>
+    </ResponsiveDrawer>
   );
 }

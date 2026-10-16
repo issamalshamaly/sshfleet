@@ -53,6 +53,8 @@ export interface LogsSnapshot {
   useUtc: boolean;
   /** How far down the results you had read. Coming back to the top of 20,000 lines loses your place. */
   scrollTop: number;
+  /** Which half a narrow screen was showing, the query or the results. A wide one shows both. */
+  pane: "query" | "results";
   /** True once the page has been left at least once, so a restored visit knows not to apply
    *  the configured defaults over what the operator typed. */
   restored: boolean;
@@ -80,6 +82,7 @@ export function emptySnapshot(): LogsSnapshot {
     matchesOnly: false,
     useUtc: false,
     scrollTop: 0,
+    pane: "query",
     restored: false,
   };
 }

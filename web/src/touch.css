@@ -16,6 +16,12 @@
   .hover-only {
     display: none !important;
   }
+  /* The log source picker elides long paths and puts the whole one in a tooltip; with no hover
+     to open it, the path wraps instead. */
+  .source-check .mantine-Checkbox-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   /* A tooltip opened by a tap: dotted, like an abbreviation, so it reads as "there is more". */
   .infotip-touch {
     display: inline-block;

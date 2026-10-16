@@ -228,3 +228,74 @@ body {
   height: 100vh;
   height: var(--vv-height, 100dvh);
 }
+
+/* The Logs page: the query column beside the results on a wide screen. Below md the two are
+   panes that take turns (data-layout="panes"); the hidden one keeps its size and its scroll, it
+   is only out of sight, so the virtual list behind it never measures zero. */
+.logs-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-sm);
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+.logs-panes {
+  display: flex;
+  align-items: stretch;
+  gap: var(--mantine-spacing-md);
+  flex: 1;
+  min-height: 0;
+}
+.logs-query {
+  width: 370px;
+  flex-shrink: 0;
+  min-height: 0;
+}
+.logs-results {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+@media (max-width: 74.99375em) {
+  .logs-page[data-layout="columns"] .logs-query {
+    width: 320px;
+  }
+}
+.logs-page[data-layout="panes"] .logs-panes {
+  position: relative;
+}
+.logs-page[data-layout="panes"] .logs-query,
+.logs-page[data-layout="panes"] .logs-results {
+  width: 100%;
+  flex: 1 1 auto;
+}
+.logs-page[data-layout="panes"] .logs-panes > [data-hidden] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* A phone's log line: source and time on a small line of their own, the text under them. */
+.log-viewer.stacked .log-line {
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 0;
+}
+.log-viewer.stacked .log-label,
+.log-viewer.stacked .log-ts {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 18px;
+}
+.log-viewer.stacked .log-label {
+  max-width: 60%;
+}
+.log-viewer.stacked .log-text {
+  flex: 1 0 100%;
+}
+.log-viewer.stacked .log-line.continuation .log-label,
+.log-viewer.stacked .log-line.continuation .log-ts {
+  display: none;
+}
