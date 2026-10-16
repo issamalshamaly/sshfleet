@@ -1,7 +1,6 @@
 import {
   Alert,
   Badge,
-  Box,
   Button,
   Card,
   Checkbox,
@@ -10,7 +9,6 @@ import {
   Group,
   Loader,
   Modal,
-  ScrollArea,
   SegmentedControl,
   Stack,
   Table,
@@ -29,6 +27,7 @@ import { useHistory, useHistoryDetail, useInvalidateSettings } from "../../hooks
 import { fmtAge, fmtDateTime } from "../../lib/format";
 import { usePageLimit, useViewState } from "../../state/views";
 import { EmptyState } from "../common";
+import { DiffView } from "./DiffView";
 
 //: States drawn before the table asks whether you want older ones.
 const PAGE = 50;
@@ -131,46 +130,6 @@ function ChangeChips({ state }: { state: HistoryState }) {
         </Text>
       )}
     </Group>
-  );
-}
-
-/** A unified diff, coloured line by line. */
-function DiffView({ text }: { text: string }) {
-  const lines = text.split("\n");
-  const shown = lines.slice(0, 3000);
-  return (
-    <ScrollArea.Autosize mah={420} type="auto" offsetScrollbars>
-      <Box component="pre" className="mono" m={0} style={{ fontSize: 12, lineHeight: 1.5 }}>
-        {shown.map((line, index) => {
-          const header = line.startsWith("+++") || line.startsWith("---");
-          const color = header
-            ? "var(--mantine-color-dimmed)"
-            : line.startsWith("+")
-              ? "var(--mantine-color-teal-3)"
-              : line.startsWith("-")
-                ? "var(--mantine-color-red-3)"
-                : line.startsWith("@@")
-                  ? "var(--mantine-color-cyan-4)"
-                  : undefined;
-          const background =
-            !header && line.startsWith("+")
-              ? "rgba(32, 201, 151, 0.10)"
-              : !header && line.startsWith("-")
-                ? "rgba(250, 82, 82, 0.10)"
-                : undefined;
-          return (
-            <div key={index} style={{ color, background, padding: "0 8px", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-              {line || " "}
-            </div>
-          );
-        })}
-      </Box>
-      {lines.length > shown.length && (
-        <Text size="xs" c="dimmed" px={8}>
-          … {lines.length - shown.length} more lines
-        </Text>
-      )}
-    </ScrollArea.Autosize>
   );
 }
 

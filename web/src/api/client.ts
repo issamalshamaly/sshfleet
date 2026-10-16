@@ -11,6 +11,9 @@ import type {
   HistoryPage,
   Host,
   HostSettings,
+  ImportDryRun,
+  ImportOptions,
+  ImportResult,
   ProjectSettings,
   KeyInfo,
   QuickAction,
@@ -61,6 +64,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+function importParams(opts: ImportOptions): string {
+  return new URLSearchParams({
+    mode: opts.mode,
+    prefer: opts.prefer,
+    with_local: String(opts.withLocal),
+    allow_commands: String(opts.allowCommands),
+  }).toString();
 }
 
 export const api = {
@@ -136,6 +148,41 @@ export const api = {
     bundleZipUrl: (name: string) => `/api/logs/bundles/${encodeURIComponent(name)}.zip?token=${encodeURIComponent(sessionToken())}`,
   },
   audit: (limit = 200) => request<AuditPage>(`/api/audit?limit=${limit}`),
+  share: {
+    /** The bundle as a file to save, with the server's note of anything it left out. Fetched with
+     *  the session header — never a token in an address — and handed to the browser as a Blob. */
+    export: async (opts: { projects?: string[]; environments?: string[]; withLocal?: boolean; allowCommands?: boolean }) => {
+      const params = new URLSearchParams();
+      for (const project of opts.projects ?? []) params.append("project", project);
+      for (const env of opts.environments ?? []) params.append("env", env);
+      if (opts.withLocal) params.set("with_local", "true");
+      if (opts.allowCommands) params.set("allow_commands", "true");
+      const response = await fetch(`/api/settings/export?${params}`, { headers: { "x-sshfleet-token": sessionToken() } });
+      if (!response.ok) {
+        let detail = response.statusText;
+        try {
+          detail = (await response.json()).detail ?? detail;
+        } catch {
+          /* not JSON */
+        }
+        throw new ApiError(response.status, detail);
+      }
+      const name = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? "sshfleet-bundle.json";
+      let warnings: string[] = [];
+      try {
+        warnings = JSON.parse(response.headers.get("x-sshfleet-warnings") ?? "[]");
+      } catch {
+        /* no note */
+      }
+      return { blob: await response.blob(), name, warnings };
+    },
+    plan: (bundle: string, opts: ImportOptions) => request<ImportDryRun>(`/api/settings/import?${importParams(opts)}`, { method: "POST", body: bundle }),
+    apply: (bundle: string, opts: ImportOptions, digest: string) =>
+      request<ImportResult>(`/api/settings/import?${importParams(opts)}&dry_run=false&digest=${encodeURIComponent(digest)}`, {
+        method: "POST",
+        body: bundle,
+      }),
+  },
   history: {
     list: (limit = 50) => request<HistoryPage>(`/api/settings/history?limit=${limit}`),
     get: (id: string, against: "previous" | "current") =>

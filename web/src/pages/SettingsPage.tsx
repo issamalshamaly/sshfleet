@@ -26,6 +26,7 @@ import {
   IconRefresh,
   IconServer2,
   IconStack2,
+  IconTransfer,
 } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -33,6 +34,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import HistoryTab from "../components/settings/HistoryTab";
 import ProjectsTab from "../components/settings/ProjectsTab";
+import ShareTab from "../components/settings/ShareTab";
 import { useEnv } from "../state/env";
 import HostsTab from "../components/settings/HostsTab";
 import { useConfig } from "../hooks/useFleet";
@@ -419,7 +421,7 @@ export default function SettingsPage() {
   const settings = useSettings();
   const { project, envNames } = useEnv();
   const [params, setParams] = useSearchParams();
-  const TABS = ["projects", "hosts", "checks", "files", "history"];
+  const TABS = ["projects", "hosts", "checks", "files", "history", "share"];
   const requested = params.get("tab") ?? "";
   const tab = TABS.includes(requested) ? requested : "projects";
 
@@ -461,6 +463,9 @@ export default function SettingsPage() {
           <Tabs.Tab value="history" leftSection={<IconHistory size={15} />}>
             History
           </Tabs.Tab>
+          <Tabs.Tab value="share" leftSection={<IconTransfer size={15} />}>
+            Export &amp; import
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="projects" pt="md">
@@ -478,6 +483,9 @@ export default function SettingsPage() {
         </Tabs.Panel>
         <Tabs.Panel value="history" pt="md">
           <HistoryTab />
+        </Tabs.Panel>
+        <Tabs.Panel value="share" pt="md">
+          <ShareTab settings={settings.data} />
         </Tabs.Panel>
       </Tabs>
     </Stack>

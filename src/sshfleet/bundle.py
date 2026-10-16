@@ -199,10 +199,12 @@ def build(
     """The bundle for this setup (or the part of it chosen), and what is worth telling about it."""
     warnings: list[str] = []
     data = config_loader.to_dict(config)
+    # Environments are named exactly (the CLI also takes a short label); projects narrow them.
     wanted_envs = [
         e
         for e in config.environments
-        if (not environments or e.name in environments or e.short in environments) and (not projects or e.project in projects)
+        if (not environments or e.name in environments or (e.short in environments and not any(o.name == e.short for o in config.environments)))
+        and (not projects or e.project in projects)
     ]
     if (projects or environments) and not wanted_envs:
         raise BundleError("no environment matches what was asked to export")
@@ -253,7 +255,9 @@ def build(
         }
     data["environments"] = fleet_envs
 
-    wanted_projects = {e.project for e in wanted_envs} | set(projects or [])
+    # Chosen environments carry their own projects and nothing else; a project chosen alone carries
+    # itself even with no environment in it.
+    wanted_projects = {e.project for e in wanted_envs} | (set() if environments else set(projects or []))
     fleet_projects = []
     for project in data.get("projects") or []:
         if scoped and project["name"] not in wanted_projects:

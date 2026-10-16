@@ -150,3 +150,23 @@ def test_the_cli_exports_a_folder_for_git(configured, fake_ssh, tmp_path: Path):
     assert (folder / "ssh" / "test-env").exists() and (folder / "fleet.yaml").exists()
     printed = CliRunner().invoke(app, ["config", "export"])
     assert json.loads(printed.output)["kind"] == "sshfleet-bundle"
+
+
+def test_chosen_environments_carry_their_own_projects_and_nothing_else(context, tmp_path: Path):
+    """Picking two projects and then one environment exports that environment and its project —
+    not the other project, empty."""
+    from sshfleet.config import ProjectCfg
+    from sshfleet.inventory import build_inventory
+
+    other = tmp_path / "acme-staging"
+    other.write_text("Host acme-app\n    HostName 10.8.0.1\n")
+    context.config.projects.append(ProjectCfg(name="acme"))
+    context.config.environments.append(EnvironmentCfg(name="Staging", ssh_config_path=other, short="stg", project="acme"))
+    context.inventory = build_inventory(context.config)
+
+    bundle, _ = _build(context, projects=["lab", "acme"], environments=["Staging"])
+    assert [e["name"] for e in bundle["fleet"]["environments"]] == ["Staging"]
+    assert [p["name"] for p in bundle["fleet"]["projects"]] == ["acme"]
+    assert bundle["manifest"]["scope"] == {"projects": ["acme"], "environments": ["Staging"]}
+    whole, _ = _build(context, projects=["acme"])
+    assert [p["name"] for p in whole["fleet"]["projects"]] == ["acme"] and list(whole["ssh"]) == ["acme-staging"]

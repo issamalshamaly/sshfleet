@@ -386,6 +386,59 @@ export interface HistoryDetail {
   restore?: RestorePlanSummary | { refused: string };
 }
 
+export interface ImportChange {
+  kind: "project" | "environment" | "stanza" | "host" | "tunnel" | "setting";
+  name: string;
+  action: "add" | "update" | "same" | "kept-local" | "conflict" | "remove" | "skipped";
+  note: string;
+}
+
+export interface ImportPlanSummary {
+  mode: "merge" | "replace";
+  prefer: "local" | "bundle";
+  changed: boolean;
+  config_changed: boolean;
+  changes: ImportChange[];
+  warnings: string[];
+  /** Environments brought in without a key on this machine. */
+  needs_key: string[];
+  /** Settings that arrived as <redacted> and have no value here. */
+  needs_value: string[];
+  files: { path: string; new: boolean; diff: string }[];
+  /** Sent back to apply exactly this plan. */
+  digest: string;
+}
+
+export interface BundleAbout {
+  created_at: string | null;
+  created_on: string | null;
+  sshfleet_version: string | null;
+  scope: { projects: string[]; environments: string[] } | null;
+  with_local: boolean | null;
+}
+
+export interface ImportOptions {
+  mode: "merge" | "replace";
+  prefer: "local" | "bundle";
+  withLocal: boolean;
+  allowCommands: boolean;
+}
+
+export interface ImportDryRun {
+  bundle: BundleAbout;
+  plan: ImportPlanSummary;
+}
+
+export interface ImportResult {
+  bundle: BundleAbout;
+  ok: boolean;
+  written: string[];
+  before: string | null;
+  after: string | null;
+  plan: ImportPlanSummary;
+  reload: ReloadSummary | null;
+}
+
 export interface RestoreResult {
   ok: boolean;
   target: string;
