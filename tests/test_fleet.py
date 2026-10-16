@@ -210,3 +210,20 @@ async def test_an_unlimited_probe_is_measured_on_every_refresh(context):
     first = await collect(context.runner, host, context.config)
     second = await collect(context.runner, host, context.config, previous=first)
     assert second.probes and second.probes[0].at == second.at
+
+
+def test_a_check_that_did_not_answer_keeps_the_hosts_memory(context):
+    """The snapshot of an unreachable check carries what was known about the host's workloads,
+    so the next check that does answer can still say what has gone."""
+    from sshfleet.collector.model import HostSnapshot
+    from sshfleet.collector.remote import unreachable
+
+    service = FleetService(context)
+    known = HostSnapshot(alias="tst-order", env="testing", at=1.0, reachable=True)
+    known.established = ["order-1"]
+    known.vanished_since = {"order-2": 1.0}
+    service.state.snapshots["tst-order"] = known
+    service._store(unreachable(context.inventory.host("tst-order"), "timeout", "no answer"))
+    stored = service.state.snapshots["tst-order"]
+    assert not stored.reachable
+    assert stored.established == ["order-1"] and stored.vanished_since == {"order-2": 1.0}

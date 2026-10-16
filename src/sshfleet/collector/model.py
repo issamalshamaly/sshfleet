@@ -161,6 +161,13 @@ class HostSnapshot:
         return [c for c in self.containers if c.running]
 
     @property
+    def saw_containers(self) -> bool:
+        """Whether this check could read the container list at all: the host answered, and
+        neither sudo nor the runtime failed. A check that could not has seen nothing, which is
+        not the same as having seen nothing running."""
+        return self.reachable and self.sudo_ok and not self.runtime_error
+
+    @property
     def tracked_containers(self) -> list[ContainerInfo]:
         """The workloads this host is held to. A job runner's throwaway containers are not among
         them, so they neither raise alerts nor pad the count the host is measured against."""

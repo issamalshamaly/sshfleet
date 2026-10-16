@@ -104,7 +104,9 @@ def evaluate(
     # Counted against what the host is actually held to: a job runner that leaves a dozen finished
     # containers behind must not make a host with a missing service look complete.
     tracked = snapshot.tracked_containers
-    if snapshot.expected_count is not None and len(tracked) < snapshot.expected_count:
+    # Only when the list could be read: with sudo or the runtime failing it is empty for that
+    # reason alone, and the SUDO or RUNTIME alert above already says so.
+    if snapshot.saw_containers and snapshot.expected_count is not None and len(tracked) < snapshot.expected_count:
         add("ABSENT", Severity.CRIT, f"{len(tracked)} of {snapshot.expected_count} workloads present")
 
     for container in tracked:

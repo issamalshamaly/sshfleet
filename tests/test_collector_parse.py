@@ -465,3 +465,69 @@ def test_a_host_keeps_the_domains_it_had_when_they_are_not_re_read(inventory):
     # A sweep that did not ask for them reports none; carrying them forward is the collector's job.
     quiet = parse_collect(json.dumps(DOCKER_DOC), host, previous=discovered)
     assert quiet.sites == []
+
+
+def _worker_gone(inventory):
+    """A host whose `worker` was established (running two checks in a row) and has just gone."""
+    from dataclasses import replace
+
+    host = replace(inventory.host("tst-order"), workload_glob=None)
+    worker = dict(DOCKER_DOC["containers"][0], ID="w1", Names="worker", State="running", Status="Up 1 day")
+    with_worker = dict(DOCKER_DOC, containers=[*DOCKER_DOC["containers"], worker])
+    once = parse_collect(json.dumps(with_worker), host)
+    twice = parse_collect(json.dumps(with_worker), host, previous=once)
+    return host, with_worker, twice
+
+
+def test_an_unreachable_check_in_between_does_not_forget_what_has_gone(inventory):
+    """One check that could not reach the host used to wipe every "was here and is gone": the
+    loss vanished from the page because the connection blinked, not because anything came back."""
+    from sshfleet.collector.remote import unreachable
+
+    host, _, twice = _worker_gone(inventory)
+    gone = parse_collect(json.dumps(DOCKER_DOC), host, previous=twice)
+    assert gone.vanished_containers == ["worker"]
+
+    blink = unreachable(host, "timeout", "no answer")
+    # What FleetService._store does with a check that did not answer.
+    blink.established, blink.vanished_since = list(gone.established), dict(gone.vanished_since)
+    back = parse_collect(json.dumps(DOCKER_DOC), host, previous=blink)
+    assert back.vanished_containers == ["worker"]
+    assert back.vanished_since == gone.vanished_since  # still aged from when it was first missed
+
+
+def test_a_workload_that_leaves_while_the_host_is_unreachable_is_still_reported(inventory):
+    from sshfleet.collector.remote import unreachable
+
+    host, with_worker, twice = _worker_gone(inventory)
+    blink = unreachable(host, "timeout", "no answer")
+    blink.established, blink.vanished_since = list(twice.established), dict(twice.vanished_since)
+    back = parse_collect(json.dumps(DOCKER_DOC), host, previous=blink)  # worker gone meanwhile
+    assert back.vanished_containers == ["worker"]
+    # And one still running after the outage is still known as established.
+    still = parse_collect(json.dumps(with_worker), host, previous=blink)
+    assert "worker" in still.established
+
+
+def test_a_failed_sudo_is_not_every_workload_gone(inventory):
+    """With sudo failing the container list comes back empty. That is a host we could not look
+    into, not one whose services all left: no new loss, and nothing forgotten."""
+    host, with_worker, twice = _worker_gone(inventory)
+    blind = parse_collect(json.dumps(dict(DOCKER_DOC, sudo_ok=0, containers=[])), host, previous=twice)
+    assert blind.vanished_containers == []
+    assert "worker" in blind.established
+    codes = {a.code for a in evaluate(blind, host, Thresholds(), twice)}
+    assert codes == {"SUDO"}
+
+    from dataclasses import replace
+
+    counted = replace(host, expected_count=2)
+    blind.expected_count = 2
+    assert {a.code for a in evaluate(blind, counted, Thresholds(), twice)} == {"SUDO"}  # no "0 of 2 present"
+
+    # Once it can look again, a workload that really left is reported.
+    after = parse_collect(json.dumps(DOCKER_DOC), host, previous=blind)
+    assert after.vanished_containers == ["worker"]
+    # And one that is still there is simply there.
+    fine = parse_collect(json.dumps(with_worker), host, previous=blind)
+    assert fine.vanished_containers == [] and "worker" in fine.established

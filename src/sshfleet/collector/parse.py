@@ -219,14 +219,29 @@ def parse_collect(
     # containers run for minutes — would slip through, which is what the ignore globs are for: a
     # workload the operator has named as churn is never remembered in the first place.
     running_now = {c.name for c in snapshot.containers if c.running and not c.ignored}
-    was_running = {c.name for c in previous.containers if c.running} if previous is not None else set()
+    remembered = set(previous.established) if previous is not None else set()
+    carried = dict(previous.vanished_since) if previous is not None else {}
+    # A check that saw no containers — the host did not answer, or sudo or the runtime failed —
+    # knows nothing about them. It carries the memory through (an unreachable check gets it from
+    # FleetService._store) rather than forgetting every workload, and it reports nothing new as
+    # gone: an empty list it could not read is not a host whose services all left. Before, one
+    # unreachable check wiped every "was here and is gone", and a failed sudo raised one for
+    # every workload on the host.
+    if not snapshot.saw_containers:
+        snapshot.established = sorted(remembered)
+        snapshot.vanished_since = {n: t for n, t in carried.items() if snapshot.at - t <= max(memory_s, 0)}
+        snapshot.vanished_containers = sorted(snapshot.vanished_since)
+        return snapshot
+    if previous is not None and previous.saw_containers:
+        was_running = {c.name for c in previous.containers if c.running}
+    else:
+        # The check before could not look; what it carried is the last that was known running.
+        was_running = remembered
     snapshot.established = sorted(running_now & was_running)
 
     # Second: the memory ages out. A workload that left is reported while the news is fresh; after
     # that its absence is the host's history, not an alarm that never clears. ``expected_count`` is
     # the durable contract for "this host should have N workloads" — this is only the heuristic.
-    remembered = set(previous.established) if previous is not None and previous.reachable else set()
-    carried = dict(previous.vanished_since) if previous is not None and previous.reachable else {}
 
     since: dict[str, float] = {}
     for name in (remembered | set(carried)) - present:

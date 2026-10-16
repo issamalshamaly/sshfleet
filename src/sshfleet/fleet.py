@@ -212,6 +212,13 @@ class FleetService:
         inventory = self.context.inventory
         if snapshot.alias not in inventory.by_alias or inventory.paused_by(snapshot.alias) is not None:
             return
+        # A host that did not answer told us nothing about its containers. Its snapshot keeps what
+        # was known — which workloads are established, which left and since when — so the check
+        # after it can still say what has gone, instead of starting over from nothing.
+        previous = self.state.snapshots.get(snapshot.alias)
+        if not snapshot.reachable and previous is not None:
+            snapshot.established = list(previous.established)
+            snapshot.vanished_since = dict(previous.vanished_since)
         self.state.snapshots[snapshot.alias] = snapshot
 
     def forget(self, alias: str) -> None:
