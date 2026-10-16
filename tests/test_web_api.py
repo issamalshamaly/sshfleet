@@ -11,7 +11,7 @@ from httpx import AsyncClient
 
 async def test_api_requires_the_session_token(web):
     client, state = web
-    bare = AsyncClient(transport=client._transport, base_url="http://test")
+    bare = AsyncClient(transport=client._transport, base_url="http://127.0.0.1")
     response = await bare.get("/api/config")
     assert response.status_code == 401
     response = await bare.get("/api/config", headers={"x-sshfleet-token": state.token})

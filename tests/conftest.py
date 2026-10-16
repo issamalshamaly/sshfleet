@@ -163,6 +163,6 @@ async def web(context, fake_ssh: FakeSsh):
     app = create_app(context)
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             client.headers["x-sshfleet-token"] = app.state.web.token
             yield client, app.state.web

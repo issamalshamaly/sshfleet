@@ -10,10 +10,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from ...files import DeniedPath, download, download_dir_for, list_dir, preview, upload
-from ..security import require_token
+from ..security import require_token, require_token_or_query
 from ..state import WebState
 
 router = APIRouter(prefix="/api/files", dependencies=[Depends(require_token)])
+# The browser opens a download as a plain link, which cannot carry the header.
+downloads = APIRouter(prefix="/api/files", dependencies=[Depends(require_token_or_query)])
 
 
 def _state(request: Request) -> WebState:
@@ -80,7 +82,7 @@ async def file_preview(request: Request, alias: str, path: str, bytes: int = 655
         raise HTTPException(502, str(exc)) from exc
 
 
-@router.get("/download")
+@downloads.get("/download")
 async def file_download(request: Request, alias: str, path: str):
     """Fetch through the tool (deny list, audit, sudo fallback), then hand it to the browser."""
     state = _state(request)

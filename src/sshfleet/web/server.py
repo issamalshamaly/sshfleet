@@ -18,12 +18,16 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ..context import Context, build_context
 from .api import ROUTERS
 from .state import WebState
 
 STATIC_DIR = Path(__file__).parent / "static"
+#: The server binds 127.0.0.1 only. Starlette cannot match a bracketed IPv6 literal, and nothing
+#: serves on ::1 anyway.
+ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 
 
 def create_app(context: Context | None = None) -> FastAPI:
@@ -40,6 +44,10 @@ def create_app(context: Context | None = None) -> FastAPI:
 
     app = FastAPI(title="sshfleet", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.web = state
+    # A page on another site can point a name it controls at 127.0.0.1 (DNS rebinding) and then
+    # read the token out of the page as if it were same-origin. Answering only to the loopback
+    # names closes that: the rebound name arrives in the Host header and is refused.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(ALLOWED_HOSTS))
     for router in ROUTERS:
         app.include_router(router)
 

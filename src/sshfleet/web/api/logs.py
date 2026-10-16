@@ -31,10 +31,12 @@ from ...logs import (
     workload_sources,
 )
 from ...logs.follow import follow
-from ..security import require_token
+from ..security import require_token, require_token_or_query
 from ..state import WebState
 
 router = APIRouter(prefix="/api/logs", dependencies=[Depends(require_token)])
+# The browser opens a bundle as a plain link, which cannot carry the header.
+downloads = APIRouter(prefix="/api/logs", dependencies=[Depends(require_token_or_query)])
 
 
 def _state(request: Request) -> WebState:
@@ -305,7 +307,7 @@ async def bundles(request: Request):
     return out[:100]
 
 
-@router.get("/bundles/{name}.zip")
+@downloads.get("/bundles/{name}.zip")
 async def bundle_zip(request: Request, name: str):
     base = _state(request).context.download_dir
     directory = (base / name).resolve()
