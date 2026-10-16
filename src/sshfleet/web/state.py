@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..bundle import StalePlan, apply_import, plan_import
 from ..collector import transitions
 from ..config import ConfigError
 from ..config import loader as config_loader
@@ -426,6 +427,45 @@ class WebState:
                 "left_in_place": plan.left_in_place,
                 "unavailable": plan.unavailable,
                 "migrated": plan.migrated,
+                "reload": summary,
+            }
+
+    async def catch_up(self) -> None:
+        """Reload now if a watched file changed and the watcher has not got to it yet, so that a
+        plan made from the running config is made from what is on disk."""
+        if self._fingerprint() != self._fingerprints:
+            await self.reload(reason="changed on disk", source="watcher")
+
+    async def import_bundle(self, bundle: dict[str, Any], *, digest: str, **options: Any) -> dict[str, Any]:
+        """Apply an import the operator has looked at: planned again under the config lock and
+        refused (StalePlan) unless it is exactly the plan they saw. The state before is recorded
+        first, so the import can be undone from history like any other change."""
+        async with self.config_lock():
+            await self.catch_up()
+            plan = await asyncio.to_thread(plan_import, bundle, config=self.context.config, paths=self.context.paths, **options)
+            if plan.digest != digest:
+                raise StalePlan("the settings or the SSH files changed since the dry run; look at the import again")
+            if not plan.changed:
+                return {"ok": True, "written": [], "before": None, "after": None, "plan": plan.to_dict(), "reload": None}
+            before = await self.record_state("before import", source="import")
+            written = await asyncio.to_thread(apply_import, plan, self.context.paths)
+            origin = bundle.get("manifest", {}).get("created_on") or "a bundle"
+            summary = await self.reload(reason=f"imported from {origin}", source="import")
+            after = self.history.latest()
+            added = sum(1 for c in plan.changes if c.action == "add")
+            updated = sum(1 for c in plan.changes if c.action == "update")
+            self.context.audit.append(
+                "config.import",
+                target=origin,
+                status="ok" if summary.get("ok") else "failed",
+                note=f"{plan.mode}; {added} added, {updated} updated, {len(written)} file(s) written; before {before.id if before else '?'}",
+            )
+            return {
+                "ok": bool(summary.get("ok")),
+                "written": written,
+                "before": before.id if before else None,
+                "after": after.id if after else None,
+                "plan": plan.to_dict(),
                 "reload": summary,
             }
 

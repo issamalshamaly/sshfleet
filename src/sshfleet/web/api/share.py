@@ -15,7 +15,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
-from ...bundle import BundleError, build, to_json
+from ...bundle import MAX_BUNDLE_BYTES, BundleError, StalePlan, build, parse, plan_import, to_json
 from ..security import require_token
 from ..state import WebState
 
@@ -70,3 +70,56 @@ async def export(
             "X-Sshfleet-Warnings": json.dumps(warnings),
         },
     )
+
+
+async def _body(request: Request) -> bytes:
+    """The uploaded bundle, read with a cap: nothing past the limit is ever held in memory."""
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > MAX_BUNDLE_BYTES:
+            raise HTTPException(413, f"a bundle is at most {MAX_BUNDLE_BYTES // (1024 * 1024)} MB")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@router.post("/import")
+async def import_bundle(
+    request: Request,
+    dry_run: bool = True,
+    mode: str = "merge",
+    prefer: str = "local",
+    allow_commands: bool = False,
+    with_local: bool = False,
+    digest: str = "",
+):
+    """The bundle is the request body. ``dry_run`` (the default) answers with everything the import
+    would change and a digest of that plan; sending the same bundle back with that digest and
+    ``dry_run=false`` applies exactly that plan — or answers 409 if anything moved in between."""
+    state = _state(request)
+    try:
+        bundle = parse(await _body(request))
+    except BundleError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    options = {"mode": mode, "prefer": prefer, "allow_commands": allow_commands, "with_local": with_local}
+    manifest = bundle.get("manifest") or {}
+    about = {k: manifest.get(k) for k in ("created_at", "created_on", "sshfleet_version", "scope", "with_local")}
+    if dry_run:
+        await state.catch_up()
+        try:
+            plan = await asyncio.to_thread(plan_import, bundle, config=state.context.config, paths=state.context.paths, **options)
+        except BundleError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"bundle": about, "plan": plan.to_dict()}
+    if not digest:
+        raise HTTPException(400, "an import is applied with the digest of the dry run it was looked at in")
+    if state.config_busy:
+        raise HTTPException(409, "another restore or import is writing the configuration; try again in a moment")
+    try:
+        result = await state.import_bundle(bundle, digest=digest, **options)
+    except StalePlan as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except BundleError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"bundle": about, **result}

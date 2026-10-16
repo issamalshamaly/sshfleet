@@ -11,7 +11,17 @@ from typing import Annotated
 import typer
 from rich.syntax import Syntax
 
-from ..bundle import BundleError, build, to_json, write_dir
+from ..bundle import (
+    BundleError,
+    ImportPlan,
+    apply_import,
+    build,
+    load,
+    parse,
+    plan_import,
+    to_json,
+    write_dir,
+)
 from ..config import loader as config_loader
 from ..context import build_context
 from ..history import (
@@ -273,3 +283,124 @@ def export(
     context.audit.append("config.export", target=", ".join((project or []) + (env or [])) or "everything", status="ok", note=f"cli; {target}")
     if out != "-":
         console.print(f"[green]exported[/green] {environments} environment(s) to {target}")
+
+
+ACTION_STYLE = {
+    "add": "green",
+    "update": "yellow",
+    "remove": "red",
+    "conflict": "red",
+    "kept-local": "cyan",
+    "skipped": "dim",
+}
+
+
+def _read_bundle(source: str) -> dict:
+    if source == "-":
+        import sys
+
+        return parse(sys.stdin.buffer.read())
+    return load(Path(source))
+
+
+def _show_plan(plan: ImportPlan, *, diffs: bool) -> None:
+    shown = [c for c in plan.changes if c.action != "same"]
+    for change in shown:
+        style = ACTION_STYLE.get(change.action, "")
+        note = f"  [dim]{change.note}[/dim]" if change.note else ""
+        console.print(f"  [{style}]{change.action:10}[/{style}] {change.kind:11} {change.name}{note}")
+    if not shown:
+        console.print("  [dim]everything in the bundle is already here[/dim]")
+    for message in plan.warnings:
+        warn(message)
+    for name in plan.needs_key:
+        info(f"environment {name} has no key here: set it in Settings › Projects, or `sshfleet env add {name} <file> --key <path> --replace`")
+    for name in plan.needs_value:
+        info(f"{name} came as <redacted>: set it here if this machine needs it")
+    if diffs:
+        for path, text in plan.diffs.items():
+            if text:
+                console.print(f"\n[bold]{path}[/bold]")
+                console.print(Syntax(text, "diff", theme="ansi_dark", background_color="default"))
+
+
+@app.command("import")
+def import_cmd(
+    source: Annotated[str, typer.Argument(help="A bundle: a .json file, a folder, or - for standard input.")],
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Show what would change, write nothing.")] = False,
+    mode: Annotated[str, typer.Option("--mode", help="merge: add and update, never remove. replace: the fleet becomes the bundle's.")] = "merge",
+    prefer: Annotated[str, typer.Option("--prefer", help="Where a setting differs: keep the local one, or take the bundle's.")] = "local",
+    allow_commands: Annotated[bool, typer.Option("--allow-commands", help="Accept SSH lines that run programs (ProxyCommand, Include, …).")] = False,
+    with_local: Annotated[bool, typer.Option("--with-local", help="Also take the bundle's key paths, file paths and pauses.")] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Do not ask before writing.")] = False,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Bring a bundle in. Checked first; the state before is kept, so an import can be undone with
+    `sshfleet config restore`."""
+    context = build_context(write_ssh_config=False)
+    try:
+        bundle = _read_bundle(source)
+        plan = plan_import(
+            bundle, config=context.config, paths=context.paths, mode=mode, prefer=prefer, allow_commands=allow_commands, with_local=with_local
+        )
+    except BundleError as exc:
+        fail(str(exc))
+        raise typer.Exit(Exit.FAILED) from exc
+    if as_json and (dry_run or not plan.changed):
+        emit_json({"plan": plan.to_dict(), "written": []})
+        return
+    if not as_json:
+        manifest = bundle.get("manifest") or {}
+        console.print(f"Bundle from [bold]{manifest.get('created_on', '?')}[/bold], {manifest.get('created_at', '?')} ({plan.mode}, prefer {plan.prefer})")
+        _show_plan(plan, diffs=dry_run)
+    if not plan.changed:
+        info("nothing to change")
+        return
+    if dry_run:
+        return
+    if not yes:
+        if mode == "replace":
+            if typer.prompt("Replace mode unregisters environments the bundle does not carry. Type replace to go on").strip() != "replace":
+                fail("not confirmed; nothing was written")
+                raise typer.Exit(Exit.USAGE)
+        elif not typer.confirm("Import these changes?"):
+            fail("nothing was written")
+            raise typer.Exit(Exit.USAGE)
+    before = context.remember("before import", source="import")
+    try:
+        written = apply_import(plan, context.paths)
+    except BundleError as exc:
+        fail(str(exc))
+        raise typer.Exit(Exit.FAILED) from exc
+    context.config = config_loader.load(context.paths.config_file)
+    origin = (bundle.get("manifest") or {}).get("created_on") or "a bundle"
+    after, _ = record_now(context.config, context.paths, reason=f"imported from {origin}", source="import")
+    context.audit.append("config.import", target=origin, status="ok", note=f"cli; {plan.mode}; {len(written)} file(s) written")
+    if as_json:
+        emit_json({"plan": plan.to_dict(), "written": written, "before": before.id if before else None, "after": after.id})
+        return
+    console.print(f"[green]imported[/green]: {len(written)} file(s) written. A running server picks it up within seconds.")
+    if before:
+        console.print(f"Undo with [bold]sshfleet config restore {before.code}[/bold]")
+
+
+@app.command("diff")
+def diff_cmd(
+    source: Annotated[str, typer.Argument(help="A bundle: a .json file, a folder, or - for standard input.")],
+    mode: Annotated[str, typer.Option("--mode")] = "merge",
+    prefer: Annotated[str, typer.Option("--prefer")] = "local",
+    allow_commands: Annotated[bool, typer.Option("--allow-commands")] = False,
+) -> None:
+    """Would importing this bundle change anything? Exit 0: no. Exit 1: yes (listed). Exit 2: it
+    would be refused. Made for a pre-commit check on a shared folder."""
+    context = build_context(write_ssh_config=False)
+    try:
+        plan = plan_import(_read_bundle(source), config=context.config, paths=context.paths, mode=mode, prefer=prefer, allow_commands=allow_commands)
+    except BundleError as exc:
+        fail(str(exc))
+        raise typer.Exit(2) from exc
+    if not plan.changed:
+        info("no changes")
+        return
+    _show_plan(plan, diffs=True)
+    raise typer.Exit(1)
