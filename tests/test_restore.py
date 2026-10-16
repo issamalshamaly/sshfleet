@@ -115,7 +115,7 @@ async def test_restoring_needs_the_typed_code(quiet, configured):
         response = await client.post(f"/api/settings/history/{start}/restore", json={"confirm": confirm})
         assert response.status_code == 400
     assert configured.read_bytes() == changed
-    assert (await client.post("/api/settings/history/20200101T000000000Z-abcdef/restore", json={"confirm": "abcdef"})).status_code == 404
+    assert (await client.post("/api/settings/history/20200101T000000000000Z-abcdef/restore", json={"confirm": "abcdef"})).status_code == 404
     assert (await client.get("/api/settings/history/../../etc/passwd")).status_code == 404
 
 

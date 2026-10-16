@@ -162,3 +162,17 @@ def test_a_key_file_is_never_copied_into_history(tmp_path: Path, monkeypatch: py
         assert b"PRIVATE KEY" not in blob.read_bytes()
         assert b"not-a-real-key" not in blob.read_bytes()
     assert os.access(paths.history_dir, os.R_OK)
+
+
+def test_states_recorded_inside_one_clock_tick_keep_their_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A burst of edits inside one tick of the clock (or a clock that steps back) must still list
+    newest first: the latest state is what every new record is compared against."""
+    frozen = 1_792_000_000_000_000_000
+    monkeypatch.setattr(history_module.time, "time_ns", lambda: frozen)
+    target = tmp_path / "config.yaml"
+    history = History(tmp_path / "history")
+    for n in range(30):
+        target.write_text(f"version: 3\n# {n}\n")
+        history.record([TrackedFile("config", target)], reason=f"edit {n}", source="cli")
+    assert [history.get(i).reason for i in history._ids()] == [f"edit {n}" for n in range(30)]
+    assert history.latest().reason == "edit 29"

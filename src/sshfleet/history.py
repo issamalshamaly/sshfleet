@@ -18,6 +18,7 @@ writes happen under an ``flock``.
 
 from __future__ import annotations
 
+import calendar
 import contextlib
 import difflib
 import fcntl
@@ -53,7 +54,7 @@ KEEP_DAYS = 14
 HARD_CAP = 2000
 PRUNE_SLACK = 20
 
-STATE_ID_RE = re.compile(r"^\d{8}T\d{9}Z-[0-9a-f]{6}$")
+STATE_ID_RE = re.compile(r"^\d{8}T\d{12}Z-[0-9a-f]{6}$")
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -190,11 +191,22 @@ def read_files(files: list[TrackedFile]) -> list[tuple[FileEntry, bytes | None]]
     return [_read(item) for item in files]
 
 
-def _now_stamp() -> tuple[str, str]:
-    now = time.time()
-    seconds = time.gmtime(now)
-    millis = int(now * 1000) % 1000
-    return time.strftime("%Y%m%dT%H%M%S", seconds) + f"{millis:03d}Z", time.strftime("%Y-%m-%dT%H:%M:%S", seconds) + f".{millis:03d}Z"
+def _stamp_after(previous_id: str | None) -> tuple[str, str]:
+    """A state's stamp (for its id) and its time (for people), always later than the state before
+    it. Ids sort by their stamp, so two states recorded inside one clock tick — a burst of edits,
+    a clock that steps back — must still come out in the order they were recorded. Called under
+    the history lock, which makes that hold across processes too."""
+    now_us = time.time_ns() // 1000
+    if previous_id:
+        stamp = previous_id[:21]
+        previous_us = calendar.timegm(time.strptime(stamp[:15], "%Y%m%dT%H%M%S")) * 1_000_000 + int(stamp[15:21])
+        now_us = max(now_us, previous_us + 1)
+    seconds, micros = divmod(now_us, 1_000_000)
+    when = time.gmtime(seconds)
+    return (
+        time.strftime("%Y%m%dT%H%M%S", when) + f"{micros:06d}Z",
+        time.strftime("%Y-%m-%dT%H:%M:%S", when) + f".{micros // 1000:03d}Z",
+    )
 
 
 def _yaml(data: bytes | None) -> dict[str, Any] | None:
@@ -342,7 +354,7 @@ class History:
                 if entry.sha256 and data is not None and not (self.blobs / entry.sha256).exists():
                     atomic_write(self.blobs / entry.sha256, data, mode=0o600)
 
-            stamp, at = _now_stamp()
+            stamp, at = _stamp_after(latest.id if latest else None)
             # The stamp goes into the code too: a state that returns to earlier content (a restore,
             # an undo) still gets a code of its own, so six characters always name one state.
             digest = hashlib.sha256(f"{stamp}{_fingerprint(entries)!r}".encode()).hexdigest()[:6]
@@ -400,7 +412,7 @@ class History:
     def _prune(self) -> int:
         """Drop states past retention, then any content no remaining state refers to."""
         ids = self._ids()
-        cutoff = time.strftime("%Y%m%dT%H%M%S000Z", time.gmtime(time.time() - KEEP_DAYS * 86400))
+        cutoff = time.strftime("%Y%m%dT%H%M%S000000Z", time.gmtime(time.time() - KEEP_DAYS * 86400))
         keep = set(ids[-KEEP_NEWEST:]) | {i for i in ids if i >= cutoff}
         keep = set(sorted(keep)[-HARD_CAP:])
         drop = [i for i in ids if i not in keep]

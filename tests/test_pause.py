@@ -10,6 +10,14 @@ def _calls_for(fake_ssh, aliases: set[str], since: int) -> list[dict]:
     return [c for c in fake_ssh.calls()[since:] if c.get("alias") in aliases]
 
 
+async def _still(state) -> None:
+    """Let a sweep the last reload set off run to its end, so calls are counted from a still point:
+    `refresh()` waits for a running sweep rather than starting a second one, and a sweep that began
+    before the mark would otherwise leave nothing after it."""
+    async with state._refresh_lock:
+        pass
+
+
 async def test_a_paused_host_gets_no_connection_and_its_open_one_is_closed(web, fake_ssh, context):
     client, state = web
     await state.refresh()
@@ -124,6 +132,7 @@ async def test_pausing_an_environment_holds_every_host_in_it(web, fake_ssh, cont
     environments = {e["name"]: e for e in (await client.get("/api/environments")).json()}
     assert environments["testing"]["paused"] is True and environments["second"]["paused"] is False
 
+    await _still(state)
     mark = len(fake_ssh.calls())
     await state.refresh()
     assert (await context.runner.run("tst-auth", "true")).kind is ErrorKind.PAUSED
@@ -154,6 +163,7 @@ async def test_pausing_a_project_holds_every_environment_in_it(web, fake_ssh, co
     projects = {p["name"]: p for p in (await client.get("/api/config")).json()["projects"]}
     assert projects["lab"]["paused"] is True and projects["acme"]["paused"] is False
 
+    await _still(state)
     mark = len(fake_ssh.calls())
     await state.refresh()
     assert _calls_for(fake_ssh, lab, mark) == []
