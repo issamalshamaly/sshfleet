@@ -206,6 +206,12 @@ class FleetService:
         return snapshot
 
     def _store(self, snapshot: HostSnapshot) -> None:
+        # A check still in flight when its host was removed (or paused) lands after the reload that
+        # forgot the host. Kept, it would bring back a server that is no longer in the fleet,
+        # alerts and all, until the next restart.
+        inventory = self.context.inventory
+        if snapshot.alias not in inventory.by_alias or inventory.paused_by(snapshot.alias) is not None:
+            return
         self.state.snapshots[snapshot.alias] = snapshot
 
     def forget(self, alias: str) -> None:

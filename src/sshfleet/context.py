@@ -13,6 +13,7 @@ from pathlib import Path
 from .audit import AuditLog
 from .config import Config, ConfigError, migrate
 from .config import loader as config_loader
+from .history import History, StateRecord, TrackedFile, record_now
 from .inventory import Inventory, build_inventory
 from .paths import Paths
 from .ssh import MuxManager, SshRunner
@@ -27,6 +28,17 @@ class Context:
     audit: AuditLog
     warnings: list[str] = field(default_factory=list)
     _runner: SshRunner | None = None
+
+    def remember(self, reason: str, *, source: str = "cli") -> StateRecord | None:
+        """Keep the configuration as it is on disk now in history (see history.py); nothing is
+        written when it has not changed. A history that cannot be written is noted in the
+        warnings, and the change it follows stands."""
+        try:
+            state, _ = record_now(self.config, self.paths, reason=reason, source=source)
+            return state
+        except Exception as exc:
+            self.warnings.append(f"history: could not record the configuration — {exc}")
+            return None
 
     @property
     def runner(self) -> SshRunner:
@@ -70,7 +82,15 @@ def build_context(paths: Paths | None = None, *, write_ssh_config: bool = True) 
     warnings: list[str] = []
     resolved.ensure()
 
-    # An older file is brought to the current layout once, atomically, keeping a backup.
+    # An older file is brought to the current layout once, atomically, keeping a backup — and the
+    # file as it was is kept in history first, so the upgrade can be looked at and gone back from.
+    if migrate.needs_upgrade(resolved.config_file):
+        try:
+            History(resolved.history_dir).record(
+                [TrackedFile("config", resolved.config_file)], reason="before upgrading config.yaml", source="disk"
+            )
+        except Exception as exc:
+            warnings.append(f"history: could not keep config.yaml before upgrading it — {exc}")
     note = migrate.upgrade(resolved.config_file)
     if note:
         warnings.append(note)
@@ -96,4 +116,8 @@ def build_context(paths: Paths | None = None, *, write_ssh_config: bool = True) 
         warnings=warnings,
     )
     context.load_secrets()
+    # Hand edits are kept too, for whoever only ever uses the CLI: what is on disk now is recorded
+    # unless the latest state already holds exactly that.
+    first = not resolved.history_dir.exists()
+    context.remember("first record" if first else "found on disk, changed outside sshfleet", source="disk")
     return context

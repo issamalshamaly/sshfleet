@@ -266,6 +266,15 @@ def aliases_from_ssh_configs(raw: dict[str, Any]) -> dict[str, list[str]]:
     return out
 
 
+def needs_upgrade(path: Path) -> bool:
+    """Whether ``upgrade`` would rewrite this file. Never raises: an unreadable file is upgrade's
+    to report."""
+    try:
+        return path.exists() and file_version(_read(path)) < CONFIG_VERSION
+    except (ConfigError, OSError, ValueError):
+        return False
+
+
 def upgrade(path: Path) -> str | None:
     """Bring a config file to the current version. Returns a note for the caller, or None."""
     if not path.exists():

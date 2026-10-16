@@ -62,6 +62,8 @@ def add(
         fail(str(exc))
         raise typer.Exit(Exit.USAGE) from exc
     config_loader.save(context.config, context.paths.config_file)
+    context.remember(f"project {project.name} added")
+    context.audit.append("settings.project.add", target=project.name, status="ok", note="cli")
     console.print(f"[green]created[/green] project [bold]{project.name}[/bold]")
 
 
@@ -78,6 +80,8 @@ def rename(
         fail(str(exc))
         raise typer.Exit(Exit.USAGE) from exc
     config_loader.save(context.config, context.paths.config_file)
+    context.remember(f"project {name} renamed to {new_name}")
+    context.audit.append("settings.project.rename", target=new_name, status="ok", note=f"cli, was {name}")
     console.print(f"[green]renamed[/green] {name} → [bold]{new_name}[/bold]")
 
 
@@ -91,4 +95,6 @@ def remove(name: Annotated[str, typer.Argument(help="Project name.")]) -> None:
         fail(str(exc))
         raise typer.Exit(Exit.USAGE) from exc
     config_loader.save(context.config, context.paths.config_file)
+    context.remember(f"project {name} removed")
+    context.audit.append("settings.project.remove", target=name, status="ok", note="cli")
     console.print(f"[green]removed[/green] project [bold]{name}[/bold]")

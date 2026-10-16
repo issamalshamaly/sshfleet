@@ -21,7 +21,8 @@ from ..config import ConfigError
 from ..config import loader as config_loader
 from ..context import Context
 from ..fleet import FleetService
-from ..inventory import EnvScope, PausedBy, build_inventory, included_files
+from ..history import History, StateRecord, tracked_files
+from ..inventory import EnvScope, PausedBy, build_inventory
 from ..tunnels import TunnelManager, TunnelWatcher
 
 QUEUE_SIZE = 2000
@@ -106,6 +107,7 @@ class WebState:
         self._wake = asyncio.Event()
         self.last_reload: float = 0.0
         self.last_reload_reason: str = "startup"
+        self.history = History(context.paths.history_dir)
 
     def spawn(self, coro) -> asyncio.Task:
         """Run a coroutine in the background, keeping a reference until it finishes."""
@@ -118,6 +120,7 @@ class WebState:
 
     async def start(self) -> None:
         self.fleet.load_cached()
+        await self.record_state("server started", source="start")
         self._fingerprints = self._fingerprint()
         self._loop_task = asyncio.create_task(self._refresh_loop(), name="fleet-refresh-loop")
         self._watch_task = asyncio.create_task(self._watch_loop(), name="config-watch-loop")
@@ -203,19 +206,31 @@ class WebState:
     # ------------------------------------------------------------------ watching
 
     def watched_files(self) -> list[Path]:
-        """config.yaml plus every SSH config file the inventory is built from."""
-        files = [self.context.paths.config_file]
-        for env_cfg in self.context.config.environments:
-            with contextlib.suppress(OSError):
-                files.extend(included_files(env_cfg.ssh_config_path))
-        seen: set[str] = set()
-        unique: list[Path] = []
-        for path in files:
-            key = str(path)
-            if key not in seen:
-                seen.add(key)
-                unique.append(path)
-        return unique
+        """config.yaml plus every SSH config file the inventory is built from — the same files
+        history keeps, so what triggers a reload and what gets recorded never drift apart."""
+        return [item.path for item in tracked_files(self.context.config, self.context.paths)]
+
+    async def record_state(
+        self,
+        reason: str,
+        *,
+        source: str,
+        valid: bool = True,
+        error: str | None = None,
+        restored_from: str | None = None,
+    ) -> StateRecord | None:
+        """Keep the configuration as it is on disk now in history (nothing is written when it has
+        not changed). Never fails the change that called it: a history that cannot be written is
+        reported and the change stands."""
+        try:
+            files = tracked_files(self.context.config, self.context.paths)
+            state, _ = await asyncio.to_thread(
+                self.history.record, files, reason=reason, source=source, valid=valid, error=error, restored_from=restored_from
+            )
+            return state
+        except Exception as exc:
+            self.events.publish({"type": "error", "message": f"history: could not record the configuration — {exc}"})
+            return None
 
     def _fingerprint(self) -> dict[str, tuple[float, int]]:
         out: dict[str, tuple[float, int]] = {}
@@ -252,7 +267,7 @@ class WebState:
                     for name, value in settled.items()
                     if self._fingerprints.get(name) != value
                 ]
-                await self.reload(reason=f"{', '.join(changed[:3]) or 'config'} changed on disk")
+                await self.reload(reason=f"{', '.join(changed[:3]) or 'config'} changed on disk", source="watcher")
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # pragma: no cover - never let the watcher die
@@ -278,16 +293,17 @@ class WebState:
             finally:
                 self._config_owner = None
 
-    async def reload(self, *, reason: str = "manual", reload_config: bool = True) -> dict[str, Any]:
+    async def reload(self, *, reason: str = "manual", reload_config: bool = True, source: str = "web") -> dict[str, Any]:
         """Re-read config.yaml and the SSH config files and swap in the new inventory.
 
         The Context object is mutated rather than replaced: the fleet service, tunnels and every
-        open request hold a reference to it.
+        open request hold a reference to it. Whatever was read is then kept in history, the
+        broken edits included — those most of all, since they are the ones to go back from.
         """
         async with self.config_lock():
-            return await self._reload(reason=reason, reload_config=reload_config)
+            return await self._reload(reason=reason, reload_config=reload_config, source=source)
 
-    async def _reload(self, *, reason: str, reload_config: bool) -> dict[str, Any]:
+    async def _reload(self, *, reason: str, reload_config: bool, source: str = "web") -> dict[str, Any]:
         context = self.context
         before = {h.alias: (h.hostname, h.user, h.port, h.proxy_jump, h.env) for h in context.inventory.hosts()}
         paused_before = _paused(context.inventory)
@@ -301,7 +317,8 @@ class WebState:
             self._fingerprints = self._fingerprint()
             message = str(exc)
             self.events.publish({"type": "error", "message": f"reload failed: {message}"})
-            return {"ok": False, "error": message}
+            state = await self.record_state(reason, source=source, valid=False, error=message)
+            return {"ok": False, "error": message, "state": state.id if state else None}
 
         context.inventory = inventory
         context.mux.inventory = inventory
@@ -341,6 +358,8 @@ class WebState:
         self._fingerprints = self._fingerprint()
         self.last_reload = time.time()
         self.last_reload_reason = reason
+        state = await self.record_state(reason, source=source)
+        previous = self.history.previous(state.id) if state else None
         summary = {
             "ok": True,
             "reason": reason,
@@ -351,6 +370,10 @@ class WebState:
             "warnings": list(inventory.warnings),
             "environments": [e.name for e in inventory.environments],
             "at": self.last_reload,
+            # The state this reload left the configuration in, and the one before it: going back
+            # to `previous_state` undoes whatever caused the reload.
+            "state": state.id if state else None,
+            "previous_state": previous.id if previous else None,
         }
         self.events.publish({"type": "inventory", **summary})
         for alias in sorted(set(added + changed + resumed)):

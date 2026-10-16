@@ -57,6 +57,7 @@ def add(
             key_note = f"{check.path}: {'; '.join(check.problems)} — fix with `{check.fix}`"
 
     config_loader.save(context.config, context.paths.config_file)
+    context.remember(f"environment {name} registered")
     context.inventory = build_inventory(context.config)
     context.mux.inventory = context.inventory
     ssh_config_path = context.mux.write_ssh_config()
@@ -235,6 +236,7 @@ def remove(
         fail(str(exc))
         raise typer.Exit(Exit.USAGE) from exc
     config_loader.save(context.config, context.paths.config_file)
+    context.remember(f"environment {name} removed")
     context.inventory = build_inventory(context.config)
     context.mux.inventory = context.inventory
     context.mux.write_ssh_config()

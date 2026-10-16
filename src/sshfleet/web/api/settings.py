@@ -7,6 +7,7 @@ change is written to the audit log and followed by a reload so the fleet view ag
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import time
 from pathlib import Path
@@ -255,6 +256,7 @@ async def add_project(request: Request, body: ProjectBody):
     except ConfigError as exc:
         raise HTTPException(400, str(exc)) from exc
     _save(state)
+    await state.record_state(f"project {project.name} added", source="web")
     state.context.audit.append("settings.project.add", target=project.name, status="ok")
     return {"ok": True, "project": _project_payload(state, project)}
 
@@ -282,6 +284,8 @@ async def update_project(request: Request, name: str, body: ProjectPatch):
     if pausing:
         # Only a pause changes what is connected to; the reload closes or reopens it now.
         await state.reload(reason=f"project {project.name} {'paused' if project.paused else 'resumed'}")
+    else:
+        await state.record_state(f"project {project.name} changed", source="web")
     state.context.audit.append(
         "settings.project.update",
         target=project.name,
@@ -305,6 +309,7 @@ async def remove_project(request: Request, name: str, confirm: str = ""):
     except ConfigError as exc:
         raise HTTPException(400, str(exc)) from exc
     _save(state)
+    await state.record_state(f"project {name} removed", source="web")
     state.context.audit.append("settings.project.remove", target=name, status="ok")
     return {"ok": True}
 
@@ -1025,6 +1030,7 @@ async def set_refresh(request: Request, body: RefreshBody):
             setattr(refresh, field_name, value)
     _save(state)
     state._fingerprints = state._fingerprint()
+    await state.record_state("check intervals changed", source="web")
     state.wake()  # cut the current wait short so the new interval applies now
     state.context.audit.append("settings.refresh", status="ok", note=f"every {refresh.fast_s}s")
     return {"ok": True, "refresh": {f: getattr(refresh, f) for f in ("fast_s", "stats_s", "stale_after_s", "collector_timeout_s", "connect_timeout_s")}}
@@ -1033,14 +1039,15 @@ async def set_refresh(request: Request, body: RefreshBody):
 @router.put("/thresholds")
 async def set_thresholds(request: Request, body: ThresholdsBody):
     state = _state(request)
-    thresholds = state.context.config.thresholds
-    for field_name, value in body.model_dump().items():
-        if value is not None:
-            setattr(thresholds, field_name, value)
+    config = state.context.config
+    # Checked on a copy: a refused change must not linger in the running config until the next save.
+    thresholds = dataclasses.replace(config.thresholds, **body.model_dump(exclude_none=True))
     if thresholds.disk_warn_pct > thresholds.disk_crit_pct or thresholds.mem_warn_pct > thresholds.mem_crit_pct:
         raise HTTPException(400, "the warning level has to be below the critical level")
+    config.thresholds = thresholds
     _save(state)
     state._fingerprints = state._fingerprint()
+    await state.record_state("alert thresholds changed", source="web")
     state.context.audit.append("settings.thresholds", status="ok")
     return {"ok": True, "thresholds": body.model_dump(exclude_none=True)}
 
@@ -1077,6 +1084,7 @@ async def set_sounds(request: Request, body: SoundsBody):
     ui["sounds"] = sounds
     config.ui = ui
     _save(state)
+    await state.record_state("sounds changed", source="web")
     state.context.audit.append("settings.sounds", status="ok", note=", ".join(f"{k}={v}" for k, v in sounds.items()))
     return {"ok": True, "sounds": sounds}
 
