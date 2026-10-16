@@ -163,3 +163,62 @@
     padding-bottom: calc(var(--mantine-spacing-md) + env(safe-area-inset-bottom));
   }
 }
+
+/* Phones, upright tablets, and any touch screen short of a desktop's width: a shell takes the
+   part of the screen the keyboard leaves (useVisualViewportVars), square and edge to edge. */
+@media (max-width: 61.99375em), (pointer: coarse) and (max-width: 74.99375em) {
+  .terminal-dock {
+    inset: auto;
+    left: 0;
+    right: 0;
+    top: var(--vv-top, 0px);
+    height: var(--vv-height, 100dvh);
+    border-radius: 0;
+    border: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .terminal-dock .terminal-host {
+    border-radius: 0;
+  }
+}
+
+/* The keys a phone keyboard lacks, only where there is no physical keyboard to have them. */
+.terminal-keys {
+  display: none;
+}
+@media (pointer: coarse) {
+  .terminal-keys {
+    display: flex;
+    gap: 6px;
+    padding: 6px;
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: none;
+    background: var(--mantine-color-dark-7);
+    border-top: 1px solid var(--mantine-color-dark-5);
+  }
+  .terminal-key {
+    flex: 0 0 auto;
+    min-width: 44px;
+    height: 40px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: var(--mantine-color-dark-5);
+    color: var(--mantine-color-gray-2);
+    font-family: var(--mantine-font-family-monospace);
+    font-size: 14px;
+  }
+  .terminal-key[data-wide] {
+    font-size: 12px;
+  }
+  .terminal-key[data-armed] {
+    background: var(--mantine-color-teal-8);
+    color: var(--mantine-color-white);
+  }
+  .terminal-key:active {
+    background: var(--mantine-color-dark-3);
+  }
+}

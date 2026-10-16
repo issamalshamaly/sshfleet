@@ -1,9 +1,11 @@
-import { Button, Code, Group, Modal, Stack, Text } from "@mantine/core";
+import { Button, Code, Group, Modal, Stack, Text, Textarea } from "@mantine/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { terminalSocketUrl } from "../api/client";
+import { COARSE, useIsPhone } from "../lib/responsive";
+import { ctrlByte, TerminalKeys } from "./TerminalKeys";
 
 /** Past this, a paste is worth a second look even on one line. */
 const BIG_PASTE_BYTES = 1024;
@@ -40,6 +42,32 @@ export function TerminalView({ alias, action, container: containerName, onExit }
   // so pasting several lines is pressing Enter several times without having read what is there
   // — which is why every desktop terminal asks first. This one used to paste it silently.
   const [pending, setPending] = useState<PendingPaste | null>(null);
+  // The terminal outlives renders; the key bar and the font size reach it through these, never
+  // through the effect that opened the socket, which must run once per session.
+  const terminalRef = useRef<Terminal | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+  // Smaller type on a phone, where 13px leaves a shell about 45 columns wide.
+  const fontSize = useIsPhone() ? 12 : 13;
+  const fontSizeRef = useRef(fontSize);
+  fontSizeRef.current = fontSize;
+  // Ctrl from the key bar applies to the next character typed, then lets go.
+  const [ctrl, setCtrl] = useState(false);
+  const ctrlRef = useRef(false);
+  const armCtrl = (armed: boolean) => {
+    ctrlRef.current = armed;
+    setCtrl(armed);
+  };
+  // Where a paste goes when the clipboard cannot be read directly (no permission, or not offered).
+  const [pasteBox, setPasteBox] = useState<string | null>(null);
+
+  /** A paste from anywhere, held for a look when it is several lines or large. */
+  const offerPaste = useCallback((text: string) => {
+    const terminal = terminalRef.current;
+    if (!terminal || !text) return;
+    const lines = lineCount(text);
+    if (lines <= 1 && text.length <= BIG_PASTE_BYTES) terminal.paste(text);
+    else setPending({ text, lines, paste: (value) => terminal.paste(value) });
+  }, []);
 
   useEffect(() => {
     const element = container.current;
@@ -48,7 +76,7 @@ export function TerminalView({ alias, action, container: containerName, onExit }
     const terminal = new Terminal({
       cursorBlink: true,
       fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontSize: fontSizeRef.current,
       lineHeight: 1.2,
       scrollback: 5000,
       theme: {
@@ -64,6 +92,8 @@ export function TerminalView({ alias, action, container: containerName, onExit }
     terminal.loadAddon(fit);
     terminal.open(element);
     fit.fit();
+    terminalRef.current = terminal;
+    fitRef.current = fit;
 
     const socket = new WebSocket(terminalSocketUrl(alias, terminal.cols, terminal.rows, { action, container: containerName }));
     socket.binaryType = "arraybuffer";
@@ -72,7 +102,9 @@ export function TerminalView({ alias, action, container: containerName, onExit }
 
     socket.onopen = () => {
       socket.send(JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows }));
-      terminal.focus();
+      // A phone would throw its keyboard over half the shell before anything is shown; there a
+      // tap on the terminal brings it up instead.
+      if (!window.matchMedia(COARSE).matches) terminal.focus();
     };
     socket.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) terminal.write(decoder.decode(event.data));
@@ -94,6 +126,12 @@ export function TerminalView({ alias, action, container: containerName, onExit }
     };
 
     const input = terminal.onData((data) => {
+      if (ctrlRef.current) {
+        // Ctrl from the key bar, then a letter from the phone's keyboard: send the control byte.
+        const control = data.length === 1 ? ctrlByte(data) : null;
+        if (control !== null) data = control;
+        armCtrl(false);
+      }
       if (socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data));
     });
     const resize = terminal.onResize(({ cols, rows }) => {
@@ -120,6 +158,8 @@ export function TerminalView({ alias, action, container: containerName, onExit }
     terminal.textarea?.addEventListener("paste", onPaste, true);
 
     return () => {
+      terminalRef.current = null;
+      fitRef.current = null;
       observer.disconnect();
       terminal.textarea?.removeEventListener("paste", onPaste, true);
       input.dispose();
@@ -129,9 +169,80 @@ export function TerminalView({ alias, action, container: containerName, onExit }
     };
   }, [alias, action, containerName, onExit]);
 
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || terminal.options.fontSize === fontSize) return;
+    terminal.options.fontSize = fontSize;
+    try {
+      fitRef.current?.fit();
+    } catch {
+      /* element hidden */
+    }
+  }, [fontSize]);
+
+  const send = (sequence: string) => terminalRef.current?.input(sequence, true);
+  const pasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) offerPaste(text);
+    } catch {
+      setPasteBox("");
+    }
+  };
+
   return (
-    <>
-      <div ref={container} className="terminal-host" />
+    <div className="terminal-view">
+      <div ref={container} className="terminal-host" onClick={() => terminalRef.current?.focus()} />
+      <TerminalKeys
+        send={send}
+        arrow={(direction) => send(`${terminalRef.current?.modes.applicationCursorKeysMode ? "\x1bO" : "\x1b["}${direction}`)}
+        ctrl={ctrl}
+        toggleCtrl={() => armCtrl(!ctrlRef.current)}
+        toggleKeyboard={() => {
+          const textarea = terminalRef.current?.textarea;
+          if (textarea && document.activeElement === textarea) textarea.blur();
+          else terminalRef.current?.focus();
+        }}
+        paste={() => void pasteFromClipboard()}
+      />
+      <Modal
+        opened={pasteBox !== null}
+        onClose={() => setPasteBox(null)}
+        title="Paste into the shell"
+        centered
+        size="md"
+        zIndex={400}
+      >
+        <Stack gap="sm">
+          <Textarea
+            label="Paste here"
+            description="The clipboard could not be read directly. Long-press in the box and paste."
+            autosize
+            minRows={3}
+            maxRows={10}
+            value={pasteBox ?? ""}
+            onChange={(event) => setPasteBox(event.currentTarget.value)}
+            data-autofocus
+            styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+          />
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={() => setPasteBox(null)}>
+              Cancel
+            </Button>
+            <Button
+              color="teal"
+              disabled={!pasteBox}
+              onClick={() => {
+                const text = pasteBox ?? "";
+                setPasteBox(null);
+                offerPaste(text);
+              }}
+            >
+              Send
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Modal
         opened={pending !== null}
         onClose={() => setPending(null)}
@@ -174,6 +285,6 @@ export function TerminalView({ alias, action, container: containerName, onExit }
           </Group>
         </Stack>
       </Modal>
-    </>
+    </div>
   );
 }

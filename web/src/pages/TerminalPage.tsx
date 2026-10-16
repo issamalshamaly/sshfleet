@@ -8,7 +8,8 @@ import { TerminalView } from "../components/TerminalView";
 export default function TerminalPage() {
   const { alias = "" } = useParams();
   return (
-    <Box h="100vh" p="sm" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    // The visible height, not 100vh: on a phone the keyboard would otherwise cover the prompt.
+    <Box p="sm" className="terminal-page" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <Group gap="sm">
         <IconTerminal2 size={18} />
         <Text fw={600} className="mono">

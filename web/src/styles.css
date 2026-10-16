@@ -120,9 +120,17 @@ body {
   padding: 0 1px;
 }
 
+/* A terminal and, on a touch screen, its key bar under it. */
+.terminal-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 /* xterm fills its container */
 .terminal-host {
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   background: #0b0f14;
   border-radius: var(--mantine-radius-md);
   padding: 8px;
@@ -204,4 +212,19 @@ body {
   text-align: right;
   white-space: normal;
   margin-top: -6px;
+}
+
+/* The shells' dock: inset from the window's edges on a desktop. */
+.terminal-dock {
+  flex-direction: column;
+  position: fixed;
+  inset: 64px 24px 24px 24px;
+  z-index: 300;
+  overflow: hidden;
+  background: var(--mantine-color-dark-8);
+}
+
+.terminal-page {
+  height: 100vh;
+  height: var(--vv-height, 100dvh);
 }

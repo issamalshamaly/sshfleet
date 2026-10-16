@@ -1,7 +1,8 @@
 import { ActionIcon, Button, Group, Modal, Paper, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconMinus, IconTerminal2, IconX } from "@tabler/icons-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { useCoarse } from "../lib/responsive";
 import { useTerminals, type TerminalSession } from "../state/terminals";
 import { TerminalView } from "./TerminalView";
 
@@ -23,9 +24,21 @@ function Session({ session, onEnded }: { session: TerminalSession; onEnded: (id:
 export function TerminalDock() {
   const { sessions, activeId, minimise, close, closeAll, show, markEnded, ended } = useTerminals();
   const [confirming, setConfirming] = useState(false);
+  const coarse = useCoarse();
+  const running = sessions.filter((s) => !ended(s.id)).length;
+  // On a phone a swipe from the edge goes back and a pull reloads, and either one would end
+  // every shell without a word. The browser's own "leave this page?" is the only guard there is.
+  useEffect(() => {
+    if (!coarse || running === 0) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [coarse, running]);
   if (sessions.length === 0) return null;
   const active = sessions.find((s) => s.id === activeId) ?? null;
-  const running = sessions.filter((s) => !ended(s.id)).length;
 
   // The header X ends every session. One shell, or several that have all exited, go without
   // asking — the same as a tab's own X; several live ones are too much to lose to a stray click.
@@ -39,15 +52,10 @@ export function TerminalDock() {
       withBorder
       shadow="xl"
       radius="md"
-      style={{
-        display: active ? "flex" : "none",
-        flexDirection: "column",
-        position: "fixed",
-        inset: "64px 24px 24px 24px",
-        zIndex: 300,
-        overflow: "hidden",
-        background: "var(--mantine-color-dark-8)",
-      }}
+      // Where it sits is in .terminal-dock: below the page on a desktop, the whole visible screen
+      // on a phone or tablet, above the on-screen keyboard.
+      className="terminal-dock"
+      style={{ display: active ? "flex" : "none" }}
     >
       <Group justify="space-between" px="sm" py={6} wrap="nowrap" style={{ borderBottom: "1px solid var(--mantine-color-dark-5)" }}>
         <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
