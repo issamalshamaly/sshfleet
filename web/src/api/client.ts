@@ -7,6 +7,8 @@ import type {
   ConnectionTest,
   EnvironmentPreview,
   Fleet,
+  HistoryDetail,
+  HistoryPage,
   Host,
   HostSettings,
   ProjectSettings,
@@ -19,6 +21,7 @@ import type {
   LogSourcesResponse,
   RefreshSettings,
   RestartPreview,
+  RestoreResult,
   Settings,
   SshConfigCandidate,
   Tunnel,
@@ -133,6 +136,16 @@ export const api = {
     bundleZipUrl: (name: string) => `/api/logs/bundles/${encodeURIComponent(name)}.zip?token=${encodeURIComponent(sessionToken())}`,
   },
   audit: (limit = 200) => request<AuditPage>(`/api/audit?limit=${limit}`),
+  history: {
+    list: (limit = 50) => request<HistoryPage>(`/api/settings/history?limit=${limit}`),
+    get: (id: string, against: "previous" | "current") =>
+      request<HistoryDetail>(`/api/settings/history/${encodeURIComponent(id)}?against=${against}`),
+    restore: (id: string, confirm: string, files?: string[]) =>
+      request<RestoreResult>(`/api/settings/history/${encodeURIComponent(id)}/restore`, {
+        method: "POST",
+        body: JSON.stringify({ confirm, files: files?.length ? files : undefined }),
+      }),
+  },
   settings: {
     get: () => request<Settings>("/api/settings"),
     hosts: () => request<HostSettings[]>("/api/settings/hosts"),

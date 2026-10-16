@@ -21,7 +21,7 @@ from ..config import ConfigError
 from ..config import loader as config_loader
 from ..context import Context
 from ..fleet import FleetService
-from ..history import History, StateRecord, apply_restore, plan_restore, tracked_files
+from ..history import History, StateRecord, apply_restore, plan_restore, restored_reason, tracked_files
 from ..inventory import EnvScope, PausedBy, build_inventory
 from ..tunnels import TunnelManager, TunnelWatcher
 
@@ -405,7 +405,7 @@ class WebState:
             if plan.writes:
                 written = await asyncio.to_thread(apply_restore, plan, self.context.paths)
                 summary = await self.reload(
-                    reason=f"restored the state of {target.at[:16].replace('T', ' ')} ({target.code})",
+                    reason=restored_reason(target),
                     source="restore",
                     restored_from=target.id,
                 )

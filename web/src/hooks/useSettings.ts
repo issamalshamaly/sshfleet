@@ -2,7 +2,7 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../api/client";
-import type { HostSettings, PausedBy, Settings } from "../api/types";
+import type { HistoryDetail, HistoryPage, HostSettings, PausedBy, Settings } from "../api/types";
 import { pauseTargetLabel } from "../lib/pause";
 
 export function useSettings() {
@@ -11,6 +11,21 @@ export function useSettings() {
 
 export function useSettingsHosts() {
   return useQuery<HostSettings[]>({ queryKey: ["settings", "hosts"], queryFn: api.settings.hosts, staleTime: 15_000 });
+}
+
+/** The states the configuration has been in, newest first. Under the "settings" key, so every
+ *  change made here and every reload (an edit in an editor included) refreshes it. */
+export function useHistory(limit: number) {
+  return useQuery<HistoryPage>({ queryKey: ["settings", "history", limit], queryFn: () => api.history.list(limit), staleTime: 5_000 });
+}
+
+export function useHistoryDetail(id: string | null, against: "previous" | "current") {
+  return useQuery<HistoryDetail>({
+    queryKey: ["settings", "history", "detail", id, against],
+    queryFn: () => api.history.get(id!, against),
+    enabled: !!id,
+    staleTime: against === "current" ? 0 : 60_000,
+  });
 }
 
 /** After any settings change the fleet, the inventory and this page are all stale. */

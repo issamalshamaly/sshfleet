@@ -1,6 +1,7 @@
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Badge,
   Button,
   Card,
@@ -20,15 +21,17 @@ import {
   IconAlertTriangle,
   IconClockPlay,
   IconFolderCog,
+  IconHistory,
   IconPlayerPlay,
   IconRefresh,
   IconServer2,
   IconStack2,
 } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
+import HistoryTab from "../components/settings/HistoryTab";
 import ProjectsTab from "../components/settings/ProjectsTab";
 import { useEnv } from "../state/env";
 import HostsTab from "../components/settings/HostsTab";
@@ -322,6 +325,7 @@ function SoundsCard() {
 
 function PathsTab() {
   const settings = useSettings();
+  const navigate = useNavigate();
   const invalidate = useInvalidateSettings();
   const reload = useMutation({
     mutationFn: api.settings.reload,
@@ -389,6 +393,13 @@ function PathsTab() {
             </Group>
           ))}
         </Stack>
+        <Text size="sm" c="dimmed" mt="sm">
+          Every earlier state of these files, together, is kept under{" "}
+          <Anchor size="sm" onClick={() => navigate("/settings?tab=history")}>
+            History
+          </Anchor>
+          , where any of them can be put back.
+        </Text>
       </Card>
 
       {(settings.data?.warnings ?? []).length > 0 && (
@@ -408,7 +419,7 @@ export default function SettingsPage() {
   const settings = useSettings();
   const { project, envNames } = useEnv();
   const [params, setParams] = useSearchParams();
-  const TABS = ["projects", "hosts", "checks", "files"];
+  const TABS = ["projects", "hosts", "checks", "files", "history"];
   const requested = params.get("tab") ?? "";
   const tab = TABS.includes(requested) ? requested : "projects";
 
@@ -447,6 +458,9 @@ export default function SettingsPage() {
           <Tabs.Tab value="files" leftSection={<IconFolderCog size={15} />}>
             Paths
           </Tabs.Tab>
+          <Tabs.Tab value="history" leftSection={<IconHistory size={15} />}>
+            History
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="projects" pt="md">
@@ -461,6 +475,9 @@ export default function SettingsPage() {
         </Tabs.Panel>
         <Tabs.Panel value="files" pt="md">
           <PathsTab />
+        </Tabs.Panel>
+        <Tabs.Panel value="history" pt="md">
+          <HistoryTab />
         </Tabs.Panel>
       </Tabs>
     </Stack>

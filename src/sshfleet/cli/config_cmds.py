@@ -21,6 +21,7 @@ from ..history import (
     compare,
     plan_restore,
     record_now,
+    restored_reason,
     tracked_files,
     with_content,
 )
@@ -200,7 +201,7 @@ def restore(
     after, _ = record_now(
         context.config,
         context.paths,
-        reason=f"restored the state of {_when(target.at)[:16]} ({target.code})",
+        reason=restored_reason(target),
         source="restore",
         restored_from=target.id,
     )

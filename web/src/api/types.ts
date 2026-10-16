@@ -309,6 +309,94 @@ export interface ReloadSummary {
   changed?: string[];
   hosts?: number;
   error?: string;
+  /** The history state this reload left the configuration in, and the one before it. */
+  state?: string | null;
+  previous_state?: string | null;
+}
+
+/** Who caused a state: this page, an editor (noticed by the server or by a CLI run), a command,
+ *  the server starting, a restore or an import. */
+export type HistorySource = "web" | "watcher" | "disk" | "cli" | "start" | "restore" | "import";
+
+export interface HistoryFile {
+  role: "config" | "ssh";
+  path: string;
+  env: string | null;
+  size: number;
+  mode: number;
+  missing: boolean;
+  /** Why the content was not kept: too large, looks like a key, holds key material. */
+  skipped: string | null;
+  kept: boolean;
+}
+
+export interface HistoryChanges {
+  first?: boolean;
+  files?: { path: string; role: string; change: string }[];
+  hosts_added?: string[];
+  hosts_removed?: string[];
+  config?: string[];
+}
+
+export interface HistoryState {
+  id: string;
+  /** The six characters typed to confirm a restore. */
+  code: string;
+  at: string;
+  reason: string;
+  source: HistorySource;
+  valid: boolean;
+  error: string | null;
+  restored_from: string | null;
+  sshfleet_version: string;
+  config_version: number | null;
+  files: HistoryFile[];
+  changes: HistoryChanges;
+}
+
+export interface HistoryPage {
+  states: HistoryState[];
+  total: number;
+  /** A restore or an import is writing the configuration right now. */
+  busy: boolean;
+}
+
+export interface FileDiff {
+  path: string;
+  role: string;
+  change: "changed" | "same" | "added" | "removed" | "unavailable";
+  diff: string;
+  note: string | null;
+}
+
+export interface RestorePlanSummary {
+  target: string;
+  writes: string[];
+  unchanged: string[];
+  left_in_place: string[];
+  unavailable: { path: string; why: string }[];
+  migrated: boolean;
+}
+
+export interface HistoryDetail {
+  state: HistoryState;
+  against: "previous" | "current";
+  previous: string | null;
+  diffs: FileDiff[];
+  restore?: RestorePlanSummary | { refused: string };
+}
+
+export interface RestoreResult {
+  ok: boolean;
+  target: string;
+  before: string | null;
+  after: string | null;
+  written: string[];
+  unchanged: string[];
+  left_in_place: string[];
+  unavailable: { path: string; why: string }[];
+  migrated: boolean;
+  reload: ReloadSummary | null;
 }
 
 export interface ConnectionTest {

@@ -343,7 +343,9 @@ class History:
                     atomic_write(self.blobs / entry.sha256, data, mode=0o600)
 
             stamp, at = _now_stamp()
-            digest = hashlib.sha256(repr(_fingerprint(entries)).encode()).hexdigest()[:6]
+            # The stamp goes into the code too: a state that returns to earlier content (a restore,
+            # an undo) still gets a code of its own, so six characters always name one state.
+            digest = hashlib.sha256(f"{stamp}{_fingerprint(entries)!r}".encode()).hexdigest()[:6]
             config_data = next((data for entry, data in read if entry.role == ROLE_CONFIG), None)
             parsed = _yaml(config_data)
             state = StateRecord(
@@ -589,6 +591,12 @@ def _config_to_write(data: bytes, files: list[tuple[FileEntry, bytes | None]], t
     except (ConfigError, ValueError, TypeError, KeyError) as exc:
         raise RestoreRefused(f"state {target.id} holds a config.yaml too old to upgrade: {exc}") from exc
     return yaml.safe_dump(upgraded, sort_keys=False, allow_unicode=True, width=100).encode(), True
+
+
+def restored_reason(target: StateRecord) -> str:
+    """How a restore is labelled in history: which state, and what that state was."""
+    reason = target.reason if len(target.reason) <= 70 else target.reason[:69] + "…"
+    return f"restored {target.code}: {reason}"
 
 
 def apply_restore(plan: RestorePlan, paths: Paths) -> list[str]:
