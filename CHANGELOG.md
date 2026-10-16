@@ -144,6 +144,22 @@
 
 ### Alerts
 
+* The bell, the alerts drawer and the fleet's Alerts card count the same thing: critical and
+  warning. The drawer used to count the informational entries too (a container that exited
+  cleanly before sshfleet first saw it, a restart count from a run over a day old), so it said 16
+  where the card said 8. Those are now listed below as Notes, folded and counted apart. The bell and
+  drawer also read each host's alerts live, as the card does, instead of a list that was only
+  replaced when a whole sweep ended. Before, after checking one host the two disagreed until the
+  next sweep.
+* A gone or stopped container can be ignored from the alerts drawer: this container, or every
+  container named like it, with the glob shown before you choose (`destination-postgres-write-*`
+  for a job runner's per-run names).
+* One check that could not reach a host no longer wipes its "was here and is gone" alerts. A
+  check where sudo or docker failed no longer reports every workload on the host as gone. Either
+  kind of check now carries what was known through unchanged. A loss still clears when the
+  container comes back, when it is ignored, or 6 hours after it was first missed
+  (`thresholds.vanished_memory_s`).
+
 * A host running a job scheduler can be kept quiet. Airbyte and its like start a container per
   task and give each one a name of its own, so the container settles in — seen running on two
   sweeps — and its ordinary end was reported as a workload that vanished, again for every job.

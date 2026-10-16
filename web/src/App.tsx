@@ -42,7 +42,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "./api/client";
-import type { Environment } from "./api/types";
+import type { Alert as FleetAlert, Environment } from "./api/types";
 import { EnvBadge } from "./components/common";
 import { AlertsDrawer } from "./components/AlertsDrawer";
 import { useConfig, useFleet, useFleetEvents } from "./hooks/useFleet";
@@ -121,15 +121,24 @@ function Shell() {
   const [alertsOpen, setAlertsOpen] = useState(false);
 
   // The bell counts what is in view: one environment, or every environment of this project —
-  // never another project's, which the sidebar counts would then contradict.
-  const alerts = useMemo(() => {
-    const all = fleet.data?.alerts ?? [];
-    return all.filter((a) => {
-      const host = fleet.data?.hosts.find((h) => h.alias === a.host);
-      return host ? inScope(host.env) : true;
-    });
-  }, [fleet.data, inScope]);
+  // never another project's, which the sidebar counts would then contradict. Read from each
+  // host's own snapshot, the same place the fleet's Alerts card reads: the fleet-wide list is only
+  // replaced when a whole sweep ends, so after a single host was checked the bell and the card
+  // disagreed until the next one.
+  const alerts = useMemo<FleetAlert[]>(
+    () =>
+      (fleet.data?.hosts ?? [])
+        .filter((h) => inScope(h.env) && !h.paused_by)
+        .flatMap((h) =>
+          (h.snapshot?.alerts ?? []).map((a) => ({ ...a, host: h.alias, key: `${h.alias}:${a.container ?? "-"}:${a.code}` })),
+        ),
+    [fleet.data, inScope],
+  );
+  // The bell counts what the fleet's Alerts card counts — critical and warning. Notes (info) are
+  // listed in the drawer, folded and counted apart, so the numbers on the page agree.
   const critical = alerts.filter((a) => a.severity === "crit").length;
+  const active = alerts.filter((a) => a.severity !== "info").length;
+  const notes = alerts.length - active;
   // A paused host holds no connection on purpose, so it is not one the count is missing.
   const inView = useMemo(
     () => (fleet.data?.hosts ?? []).filter((h) => inScope(h.env) && !h.paused_by),
@@ -326,8 +335,10 @@ function Shell() {
                 {sounds?.enabled ? <IconVolume size={17} /> : <IconVolumeOff size={17} />}
               </ActionIcon>
             </Tooltip>
-            <Tooltip label={alerts.length ? `${alerts.length} active alerts` : "no active alerts"}>
-              <Indicator disabled={alerts.length === 0} label={alerts.length} size={16} color={critical ? "red" : "yellow"} offset={3}>
+            <Tooltip
+              label={`${active ? `${active} active alert${active === 1 ? "" : "s"}` : "no active alerts"}${notes ? ` · ${notes} note${notes === 1 ? "" : "s"}` : ""}`}
+            >
+              <Indicator disabled={active === 0} label={active} size={16} color={critical ? "red" : "yellow"} offset={3}>
                 <ActionIcon variant="default" size="lg" aria-label="alerts" onClick={() => setAlertsOpen(true)}>
                   <IconBell size={17} />
                 </ActionIcon>
