@@ -2,6 +2,61 @@
 
 ## Unreleased
 
+### History and restore
+
+* Every state of `config.yaml` and the SSH config files is kept, whoever changed them: this page,
+  a command, or an editor (noticed by the server's watcher, or by the next command you run).
+  Settings › History lists each state with who made it and what changed — config sections, hosts
+  added or removed, SSH files — and shows the diff against the state before or against the files
+  now. Any state can be put back, from the page (confirmed by typing its six-character code, with
+  an Undo in the notification) or with `sshfleet config restore <code>`. A restore checks that the
+  result loads before writing, writes only the files that differ, deletes nothing, keeps a backup
+  of each file it writes, and records the state it replaces, so it can be undone. A hand edit that
+  breaks the config is kept too, marked as not loading. Storage is content-addressed under
+  `~/.local/state/sshfleet/history/` (0700/0600): the newest 200 states and everything from the
+  last 14 days. A file that looks like a key is never copied. `sshfleet config history` and
+  `config show <code> --diff` read it from the command line.
+
+### Export and import
+
+* `sshfleet config export` and Settings › Export & import write the setup as a bundle: one JSON
+  file, or a folder for git (`manifest.json`, `fleet.yaml`, `ssh/<file>`). It carries the fleet
+  and each environment's SSH text. It never carries key paths or `IdentityFile` lines, file paths,
+  interface preferences or pauses, unless `--with-local` is given for moving your own setup.
+  Credential-looking settings and passwords in URLs go out as `<redacted>`. If the finished file
+  would contain a private key, an AWS, GitHub, GitLab or Slack token, or a value from
+  `secrets.env`, the export is refused. SSH lines that would run on the importer (`ProxyCommand`,
+  `Include`, `Match … exec`, `IdentityAgent` …) are refused unless allowed. On the page, the
+  environments offered are exactly those of the chosen projects, and a line says what will go.
+* `sshfleet config import` and the same tab bring a bundle in. Everything it would change is shown
+  first. By default it merges: it adds and updates and never removes. Where both sides differ it
+  keeps the local version unless told to take the bundle's — except where the local value is only
+  the default. Keys, paths and pauses stay as they are here, and `<redacted>` never replaces a real
+  value. SSH hosts are merged a stanza at a time, keeping comments, local-only hosts and
+  `IdentityFile` lines. A new environment's hosts go to `~/.ssh/config.d/<project>_<short>`.
+  Clashing labels, ports already in use and partly overlapping stanzas are reported as conflicts
+  and left out. Replace mode unregisters what the bundle does not carry, deleting no file. The
+  page applies exactly the plan you looked at, or says what changed meanwhile. An import is undone
+  from History. `sshfleet config diff` exits 0 when there is nothing to import, 1 when there is,
+  and 2 when the bundle would be refused, for a pre-commit check.
+
+### Audit trail
+
+* The Audit page filters on the server, over the whole trail: by time, by action, and by the
+  environments in view. It also exports what it shows as CSV or JSON Lines, as does
+  `sshfleet audit export [--since 7d] [--action 'container.*'] [--env] [--host] [--status] [--jsonl]`.
+  In a CSV, a cell that starts like a spreadsheet formula gets a leading quote. The bare
+  `sshfleet audit` still lists the trail.
+
+### Security
+
+* The web server answers only to `127.0.0.1` and `localhost`, so a page that points its own name
+  at this machine (DNS rebinding) cannot fetch the page that carries the session token. The token
+  is compared in constant time and read from the request header. An address is accepted only on
+  the two download links and the terminal socket.
+* An `Include` glob in an SSH config file never opens a key, a public key or a backup. Before
+  this, `Include ~/.ssh/*` read the private keys as if they were configuration.
+
 ### Environments
 
 * An environment that starts empty gets its file at `~/.ssh/config.d/<project>_<short label>`
@@ -33,6 +88,14 @@
 
 ### Fixes
 
+* SSH config backups are named after the file's full path. Pruning `prod` no longer deletes
+  `prod.old`'s copies, two files called `config` keep separate backups, and edits landing in the
+  same millisecond no longer overwrite each other's copy. Writes go through a symlink to the real
+  file instead of replacing the link, and are flushed to disk before the rename.
+* Two reloads at once could interleave and report one another's changes; they now take turns.
+* A check still in flight for a host that was removed or paused meanwhile no longer brings it back
+  to the fleet page.
+* A refused change to the alert levels no longer stays in the running config until the next save.
 * Hosts of an environment registered after another one with a key showed as unreachable
   ("Could not resolve hostname"), although plain `ssh` reached them. OpenSSH reads an `Include`
   inside a `Host` block only for hosts matching that block, and each environment's file was

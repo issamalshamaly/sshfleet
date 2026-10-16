@@ -283,6 +283,56 @@ header and an optional desktop notification for critical alerts while the tab is
 background. Browsers only allow sound after the page has been clicked once. The choice is saved
 in the config, so it follows you between browsers.
 
+## History, export and import
+
+**Every state is kept.** Whenever `config.yaml` or one of your SSH config files changes, the
+change is recorded under `~/.local/state/sshfleet/history/`. That includes edits made on the
+page, from a command, or in an editor. Settings › **History** lists each state, says who made
+it and what it changed, and shows the diff. Any earlier state can be put back. The state you
+leave is recorded first, so a restore can itself be undone. A restore checks first that the
+result loads, writes only the files that differ, and never deletes anything. A broken hand edit
+is kept too, marked as not loading, so you can see what it was. Unchanged content is stored
+only once, files are private (0600), and a file that looks like a key is never copied.
+
+```
+sshfleet config history                 # newest first, each with a six-character code
+sshfleet config show <code> --diff      # what that state changed
+sshfleet config restore <code>          # put it back (asks for the code; --dry-run to look)
+```
+
+**A whole setup in one file.** Settings › **Export & import**, or `sshfleet config export`,
+writes a bundle of the fleet. It carries the projects, environments, hosts and what is watched
+on them, tunnels, thresholds, and each environment's SSH file. Nothing that belongs to this
+machine goes with it: key paths, `IdentityFile` lines, file paths, interface preferences and
+pauses all stay behind. Settings that look like credentials go out as `<redacted>`. If the
+finished file would still contain a private key, a cloud or chat token, or a value from
+`secrets.env`, nothing is exported and you are told where it is. `--with-local` adds this
+machine's paths, for moving your own setup to another computer.
+
+**Import shows you everything first.** By default it merges: it adds and updates and never
+removes. Where both sides differ it keeps yours unless you choose otherwise, and your keys,
+paths and pauses are left alone. SSH hosts are merged one stanza at a time, so your comments and
+local-only hosts survive. A bundle whose SSH text would run something on your machine
+(`ProxyCommand`, `Include`, `Match … exec`) is refused unless you allow it. An import is undone
+from History like any other change.
+
+**Sharing through git.** A folder form keeps the bundle readable in a diff:
+
+```
+sshfleet config export --out ops/sshfleet/       # manifest.json, fleet.yaml, ssh/<file>
+git add ops/sshfleet && git commit -m "fleet: add the payments hosts"
+# a teammate:
+sshfleet config import ops/sshfleet/ --dry-run   # look first
+sshfleet config import ops/sshfleet/             # then set the key path once, in Settings
+sshfleet config diff ops/sshfleet/               # exit 0 nothing to import, 1 changes, 2 refused
+```
+
+Importing the same bundle again changes nothing, so `config diff` works as a pre-commit check.
+
+**The audit trail** can be filtered and exported from the Audit page, or with
+`sshfleet audit export --since 7d --action 'container.*' [--jsonl]`. In a CSV, a cell that starts
+like a spreadsheet formula is written with a leading quote, so it shows as text.
+
 ## What it does
 
 **Fleet view.** Every host with load, memory, disk, containers running versus expected, a health
@@ -344,7 +394,10 @@ the prompt appears immediately.
 | `tunnel up · down · status` | port forwards |
 | `ssh <alias> [--tab] [--print]` | open a shell |
 | `mux warm · status · reset · stop` | manage the shared connections |
-| `hosts · doctor · audit · version` | inventory, self-check, audit trail |
+| `config history · show · restore` | every earlier state of the configuration, and putting one back |
+| `config export · import · diff` | the setup as a bundle: move it, share it, check it |
+| `audit [export]` | the audit trail, and its export as CSV or JSON Lines |
+| `hosts · doctor · version` | inventory, self-check, version |
 
 Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing found,
 `2` usage, `3` partial failure, `4` total failure, `6` results truncated (with `--strict`).
@@ -379,6 +432,14 @@ Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing
   can smuggle a second keyword (a `ProxyCommand`, say) onto a line.
 * **Every change is recorded.** Restarts, uploads, downloads, tunnel changes, opened shells and
   every settings edit go to `~/.local/state/sshfleet/audit.jsonl`; read it with `sshfleet audit`.
+* **Every earlier configuration can be put back.** History keeps each state of `config.yaml` and
+  the SSH files. Restores and imports record the state before them, so either can be undone.
+* **A bundle never carries a key or a secret, and nothing in one runs on import.** Both are
+  enforced in code and held by tests: an export seeded with every kind of secret contains none
+  of them, and a bundle with `ProxyCommand`, `Include` or `Match exec` is refused unless allowed.
+* **The page talks to the server with a session token in a header.** It answers only to
+  `127.0.0.1` and `localhost`, which stops a rebound DNS name from fetching the page. The token
+  is accepted in an address only on the two download links and the terminal socket.
 
 ## Configuration
 
