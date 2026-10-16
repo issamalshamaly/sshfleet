@@ -1,16 +1,20 @@
-import { Badge, Button, Card, Divider, Group, Menu, Select, Stack, Table, Text, Tooltip } from "@mantine/core";
+import { Badge, Button, Card, Code, Collapse, Divider, Group, Menu, Select, Stack, Table, Text, UnstyledButton } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { IconDownload } from "@tabler/icons-react";
+import { IconChevronDown, IconChevronRight, IconDownload } from "@tabler/icons-react";
+import { useState } from "react";
 
 import { api } from "../api/client";
 import { saveBlob } from "../lib/download";
 import { EmptyState, EnvBadge } from "../components/common";
+import { DataCard, InfoTip } from "../components/responsive";
+import type { AuditEntry } from "../api/types";
 import { useConfig } from "../hooks/useFleet";
 import { useEnv } from "../state/env";
 import { useViewState } from "../state/views";
 import { actionColor, actionLabel } from "../lib/actions";
 import { fmtDateTime } from "../lib/format";
+import { useIsPhone } from "../lib/responsive";
 
 const STATUS_COLOR: Record<string, string> = { ok: "teal", started: "blue", failed: "red", denied: "red", cancelled: "gray" };
 const PAGE = 100;
@@ -49,6 +53,8 @@ export default function AuditPage() {
   const total = audit.data?.total ?? 0;
   const actions = audit.data?.actions ?? [];
   const more = total - rows.length;
+  // Seven columns do not fit a phone: an entry is a card there, its command one tap away.
+  const phone = useIsPhone();
 
   return (
     <Stack gap="md">
@@ -67,8 +73,8 @@ export default function AuditPage() {
             .
           </Text>
         </div>
-        <Group gap="xs" align="flex-end">
-          <Select size="sm" placeholder="Any time" clearable value={since} onChange={setSince} data={SINCE} w={160} />
+        <Group gap="xs" align="flex-end" w={{ base: "100%", sm: "auto" }}>
+          <Select size="sm" placeholder="Any time" clearable value={since} onChange={setSince} data={SINCE} w={{ base: "100%", xs: 160 }} />
           <Select
             size="sm"
             placeholder="All actions"
@@ -77,7 +83,7 @@ export default function AuditPage() {
             value={action}
             onChange={setAction}
             data={actions.map((value) => ({ value, label: actionLabel(value) }))}
-            w={240}
+            w={{ base: "100%", xs: 240 }}
           />
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
@@ -93,9 +99,16 @@ export default function AuditPage() {
           </Menu>
         </Group>
       </Group>
-      <Card withBorder padding={0}>
+      {/* On a phone the cards are the frame; a border around them would be a box in a box. */}
+      <Card withBorder={!phone} padding={0} bg={phone ? "transparent" : undefined}>
         {rows.length === 0 ? (
           <EmptyState title={action || since ? "Nothing matches" : "No actions recorded yet"} />
+        ) : phone ? (
+          <Stack gap="sm">
+            {rows.map((entry, index) => (
+              <AuditCard key={`${entry.ts}-${index}`} entry={entry} environments={config.data?.environments} />
+            ))}
+          </Stack>
         ) : (
           <Table.ScrollContainer minWidth={900}>
             <Table verticalSpacing="xs" highlightOnHover>
@@ -119,21 +132,21 @@ export default function AuditPage() {
                       </Text>
                     </Table.Td>
                     <Table.Td className="nowrap">
-                      <Tooltip label={entry.action} openDelay={400}>
+                      <InfoTip label={entry.action} openDelay={400}>
                         <Badge size="sm" variant="light" color={actionColor(entry.action)} style={{ cursor: "default" }}>
                           {actionLabel(entry.action)}
                         </Badge>
-                      </Tooltip>
+                      </InfoTip>
                     </Table.Td>
                     <Table.Td>
                       {entry.env ? (
                         <EnvBadge env={entry.env} environments={config.data?.environments} size="xs" />
                       ) : (
-                        <Tooltip label="A fleet-wide action: it belongs to no one environment" openDelay={400}>
+                        <InfoTip label="A fleet-wide action: it belongs to no one environment" openDelay={400}>
                           <Text size="xs" c="dimmed" style={{ cursor: "default" }}>
                             —
                           </Text>
-                        </Tooltip>
+                        </InfoTip>
                       )}
                     </Table.Td>
                     <Table.Td>
@@ -142,11 +155,11 @@ export default function AuditPage() {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <Tooltip label={entry.command ?? ""} disabled={!entry.command} multiline maw={600}>
+                      <InfoTip label={entry.command ?? ""} disabled={!entry.command} multiline maw={600}>
                         <Text size="sm" className="mono" style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {entry.target ?? ""}
                         </Text>
-                      </Tooltip>
+                      </InfoTip>
                     </Table.Td>
                     <Table.Td>
                       {entry.status && (
@@ -188,5 +201,70 @@ export default function AuditPage() {
         )}
       </Card>
     </Stack>
+  );
+}
+
+/** One entry of the trail, for a phone: what was done, where, to what, and how it ended, with
+ *  the exact command folded under it rather than in a tooltip no finger can open. */
+function AuditCard({ entry, environments }: { entry: AuditEntry; environments?: Parameters<typeof EnvBadge>[0]["environments"] }) {
+  const [showCommand, setShowCommand] = useState(false);
+  const note = entry.note ?? (entry.duration_ms ? `${(entry.duration_ms / 1000).toFixed(1)}s` : "");
+  return (
+    <DataCard>
+      <Group justify="space-between" wrap="nowrap" gap="xs" align="flex-start">
+        <Badge size="sm" variant="light" color={actionColor(entry.action)}>
+          {actionLabel(entry.action)}
+        </Badge>
+        {entry.status && (
+          <Badge size="sm" variant="light" color={STATUS_COLOR[entry.status] ?? "gray"}>
+            {entry.status}
+          </Badge>
+        )}
+      </Group>
+      <Group gap={6} mt={6} wrap="wrap">
+        <Text size="xs" className="mono" c="dimmed">
+          {fmtDateTime(entry.ts)}
+        </Text>
+        {entry.env ? (
+          <EnvBadge env={entry.env} environments={environments} size="xs" />
+        ) : (
+          <Text size="xs" c="dimmed">
+            · fleet-wide
+          </Text>
+        )}
+        {entry.host && (
+          <Text size="xs" className="mono">
+            {entry.host}
+          </Text>
+        )}
+      </Group>
+      {entry.target && (
+        <Text size="sm" className="mono" mt={4} style={{ overflowWrap: "anywhere" }}>
+          {entry.target}
+        </Text>
+      )}
+      {note && (
+        <Text size="xs" c="dimmed" mt={2}>
+          {note}
+        </Text>
+      )}
+      {entry.command && (
+        <>
+          <UnstyledButton onClick={() => setShowCommand((open) => !open)} mt={6} py={4}>
+            <Group gap={4}>
+              {showCommand ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+              <Text size="xs" fw={600}>
+                {showCommand ? "Hide command" : "Show command"}
+              </Text>
+            </Group>
+          </UnstyledButton>
+          <Collapse in={showCommand}>
+            <Code block style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 11.5 }}>
+              {entry.command}
+            </Code>
+          </Collapse>
+        </>
+      )}
+    </DataCard>
   );
 }

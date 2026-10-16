@@ -2,14 +2,16 @@ import { ActionIcon, Anchor, Badge, Button, Card, Group, Loader, Modal, Stack, S
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconExternalLink, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { api } from "../api/client";
 import type { Tunnel } from "../api/types";
 import TunnelModal from "../components/TunnelModal";
 import { EmptyState, EnvBadge } from "../components/common";
+import { CardActions, DataCard, InfoTip } from "../components/responsive";
 import { useConfig, useFleet } from "../hooks/useFleet";
 import { fmtTime } from "../lib/format";
+import { useBelowLg, useIsPhone } from "../lib/responsive";
 import { useEnv } from "../state/env";
 
 /** What is really on the port, which the switch alone (the operator's intent) cannot say. */
@@ -26,16 +28,16 @@ function TunnelState({ tunnel }: { tunnel: Tunnel }) {
       ? `Could not reopen it yet (${tunnel.attempts} ${tunnel.attempts === 1 ? "try" : "tries"})${tunnel.error ? ` — ${tunnel.error}` : ""}. Next try at ${fmtTime(tunnel.retry_at)}.`
       : `Its connection to ${tunnel.via} went. sshfleet is opening it again.`;
     return (
-      <Tooltip label={`${detail} Turn it off to stop.`} multiline maw={360}>
+      <InfoTip label={`${detail} Turn it off to stop.`} multiline maw={360}>
         <Badge color="yellow" variant="light" size="xs" leftSection={<Loader size={8} color="yellow" />}>
           reconnecting
         </Badge>
-      </Tooltip>
+      </InfoTip>
     );
   }
   if (tunnel.held) {
     return (
-      <Tooltip
+      <InfoTip
         label={`The tunnel is closed, but something still listens on ${tunnel.endpoint}. Opening it will pick the next free port.`}
         multiline
         maw={360}
@@ -43,7 +45,7 @@ function TunnelState({ tunnel }: { tunnel: Tunnel }) {
         <Badge color="orange" variant="light" size="xs">
           port busy
         </Badge>
-      </Tooltip>
+      </InfoTip>
     );
   }
   return null;
@@ -97,6 +99,13 @@ export default function TunnelsPage() {
   });
 
   const rows = (tunnels.data ?? []).filter((t) => inScope(t.env));
+  // Seven columns of addresses: a card each on a phone, a table that scrolls sideways in its
+  // card on a tablet (it was being clipped there), the plain table on a desktop.
+  const phone = useIsPhone();
+  const belowLg = useBelowLg();
+  // In the sideways-scrolling table a name or an address is kept on one line: broken at its
+  // hyphens it reads as two.
+  const oneLine = belowLg ? ({ whiteSpace: "nowrap" } as const) : undefined;
 
   return (
     <Stack gap="md">
@@ -114,10 +123,79 @@ export default function TunnelsPage() {
           Add tunnel
         </Button>
       </Group>
-      <Card withBorder padding={0}>
+      {/* On a phone the cards are the frame; a border around them would be a box in a box. */}
+      <Card withBorder={!phone} padding={0} bg={phone ? "transparent" : undefined}>
         {rows.length === 0 ? (
           <EmptyState title="No tunnels yet" hint="Add one to reach Kibana, Seq or a database through a bastion." />
+        ) : phone ? (
+          <Stack gap="sm">
+            {rows.map((tunnel) => (
+              <DataCard key={tunnel.name}>
+                <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                  <Group gap="sm" wrap="nowrap" miw={0}>
+                    <Switch
+                      checked={tunnel.wanted}
+                      onChange={(e) => toggle.mutate({ name: tunnel.name, up: e.currentTarget.checked })}
+                      disabled={toggle.isPending}
+                      color="teal"
+                      aria-label={tunnel.wanted ? `close ${tunnel.name}` : `open ${tunnel.name}`}
+                    />
+                    <Text fw={600} className="mono" truncate>
+                      {tunnel.name}
+                    </Text>
+                  </Group>
+                  <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
+                    <TunnelState tunnel={tunnel} />
+                    <EnvBadge env={tunnel.env} environments={config.data?.environments} />
+                  </Group>
+                </Group>
+                <Text size="sm" className="mono" mt={8} style={{ overflowWrap: "anywhere" }}>
+                  {tunnel.endpoint} → {tunnel.remote}
+                </Text>
+                <Text size="xs" c="dimmed" className="mono" style={{ overflowWrap: "anywhere" }}>
+                  via {tunnel.via}
+                </Text>
+                {tunnel.wanted && (
+                  <Text size="xs" c="dimmed" mt={6}>
+                    Turn it off before editing or deleting it.
+                  </Text>
+                )}
+                <CardActions>
+                  {tunnel.url && (
+                    <Button
+                      variant="default"
+                      component="a"
+                      href={tunnel.url}
+                      target="_blank"
+                      disabled={!tunnel.up}
+                      rightSection={<IconExternalLink size={14} />}
+                    >
+                      Open
+                    </Button>
+                  )}
+                  <Button
+                    variant="default"
+                    leftSection={<IconPencil size={15} />}
+                    disabled={tunnel.wanted}
+                    onClick={() => setModal({ open: true, editing: tunnel })}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    color="red"
+                    leftSection={<IconTrash size={15} />}
+                    disabled={tunnel.wanted}
+                    onClick={() => setRemoving(tunnel)}
+                  >
+                    Delete
+                  </Button>
+                </CardActions>
+              </DataCard>
+            ))}
+          </Stack>
         ) : (
+          <TableFrame scroll={belowLg}>
           <Table verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
@@ -141,7 +219,7 @@ export default function TunnelsPage() {
                         disabled={toggle.isPending}
                         color="teal"
                       />
-                      <Text fw={600} className="mono">
+                      <Text fw={600} className="mono" style={oneLine}>
                         {tunnel.name}
                       </Text>
                       <TunnelState tunnel={tunnel} />
@@ -151,17 +229,17 @@ export default function TunnelsPage() {
                     <EnvBadge env={tunnel.env} environments={config.data?.environments} />
                   </Table.Td>
                   <Table.Td>
-                    <Text className="mono" size="sm">
+                    <Text className="mono" size="sm" style={oneLine}>
                       {tunnel.endpoint}
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Text className="mono" size="sm" c="dimmed">
+                    <Text className="mono" size="sm" c="dimmed" style={oneLine}>
                       {tunnel.remote}
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Text className="mono" size="sm" c="dimmed">
+                    <Text className="mono" size="sm" c="dimmed" style={oneLine}>
                       {tunnel.via}
                     </Text>
                   </Table.Td>
@@ -192,12 +270,24 @@ export default function TunnelsPage() {
                         </Button>
                       )}
                       <Tooltip label={tunnel.wanted ? "Close it before changing it" : "Edit"}>
-                        <ActionIcon variant="subtle" color="gray" disabled={tunnel.wanted} onClick={() => setModal({ open: true, editing: tunnel })}>
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          aria-label={tunnel.wanted ? `close ${tunnel.name} before changing it` : `edit ${tunnel.name}`}
+                          disabled={tunnel.wanted}
+                          onClick={() => setModal({ open: true, editing: tunnel })}
+                        >
                           <IconPencil size={15} />
                         </ActionIcon>
                       </Tooltip>
                       <Tooltip label={tunnel.wanted ? "Close it before deleting it" : "Delete"}>
-                        <ActionIcon variant="subtle" color="red" disabled={tunnel.wanted} onClick={() => setRemoving(tunnel)}>
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          aria-label={tunnel.wanted ? `close ${tunnel.name} before deleting it` : `delete ${tunnel.name}`}
+                          disabled={tunnel.wanted}
+                          onClick={() => setRemoving(tunnel)}
+                        >
                           <IconTrash size={15} />
                         </ActionIcon>
                       </Tooltip>
@@ -207,6 +297,7 @@ export default function TunnelsPage() {
               ))}
             </Table.Tbody>
           </Table>
+          </TableFrame>
         )}
       </Card>
 
@@ -236,4 +327,9 @@ export default function TunnelsPage() {
       </Modal>
     </Stack>
   );
+}
+
+/** The table as it is, or inside a sideways scroller where its addresses do not fit. */
+function TableFrame({ scroll, children }: { scroll: boolean; children: ReactNode }) {
+  return scroll ? <Table.ScrollContainer minWidth={760}>{children}</Table.ScrollContainer> : <>{children}</>;
 }
