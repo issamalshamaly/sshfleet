@@ -33,18 +33,35 @@ body {
 }
 
 /* A whole card that is one click target. .host-row only paints table cells, so a Card wearing
-   it looked clickable and gave no feedback at all. */
-.clickable-card {
+   it looked clickable and gave no feedback at all. A finger gets the same feedback while it is
+   down; a hover rule alone would stick to whatever was tapped last on a touch screen. */
+.clickable-card,
+.tap-card {
   cursor: pointer;
   transition: border-color 120ms ease, background-color 120ms ease;
 }
-.clickable-card:hover {
-  border-color: var(--mantine-color-dark-3);
-  background-color: var(--mantine-color-dark-6);
+@media (hover: hover) {
+  .clickable-card:hover,
+  .tap-card:hover {
+    border-color: var(--mantine-color-dark-3);
+    background-color: var(--mantine-color-dark-6);
+  }
+  .host-row:hover td {
+    background: var(--mantine-color-dark-6);
+  }
 }
-
-.host-row:hover td {
-  background: var(--mantine-color-dark-6);
+@media (hover: none) {
+  .clickable-card:active,
+  .tap-card:active {
+    border-color: var(--mantine-color-dark-3);
+    background-color: var(--mantine-color-dark-6);
+  }
+  .host-row:active td {
+    background: var(--mantine-color-dark-6);
+  }
+}
+.tap-card[data-selected] {
+  border-color: var(--mantine-color-teal-8);
 }
 .host-row[data-selected="true"] td {
   background: var(--mantine-color-dark-5);

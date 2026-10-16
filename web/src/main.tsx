@@ -5,6 +5,7 @@ import "@mantine/notifications/styles.css";
 import "@mantine/spotlight/styles.css";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
+import "./touch.css";
 
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";

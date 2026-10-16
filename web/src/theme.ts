@@ -18,6 +18,11 @@ export const theme = createTheme({
     // default radius rounds a 16px box almost into a circle.
     Checkbox: { defaultProps: { radius: "xs" } },
     Tooltip: { defaultProps: { withArrow: true, openDelay: 300 } },
+    // What gets typed here is aliases, paths, regexes and names typed to confirm a removal. A phone
+    // keyboard that capitalises or "corrects" them turns `order-api` into `Order-API`.
+    TextInput: { defaultProps: { autoCapitalize: "off", autoCorrect: "off", spellCheck: false } },
+    Textarea: { defaultProps: { autoCapitalize: "off", autoCorrect: "off", spellCheck: false } },
+    Autocomplete: { defaultProps: { autoCapitalize: "off", autoCorrect: "off", spellCheck: false } },
   },
 });
 

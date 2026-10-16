@@ -1,0 +1,108 @@
+/* Touch screens and narrow screens. Every rule sits behind a media query, so a desktop with a
+   mouse renders exactly as it did before; the edges match Mantine's hiddenFrom / visibleFrom. */
+
+:root {
+  /* The phone tab bar's height, 0 where there is none. Pages and the main column size against it. */
+  --tabbar-h: 0px;
+}
+
+/* What only makes sense with a mouse, and what only makes sense with a finger. */
+@media (hover: hover) {
+  .touch-only {
+    display: none !important;
+  }
+}
+@media (hover: none) {
+  .hover-only {
+    display: none !important;
+  }
+  /* A tooltip opened by a tap: dotted, like an abbreviation, so it reads as "there is more". */
+  .infotip-touch {
+    display: inline-block;
+    max-width: 100%;
+    cursor: help;
+    text-decoration: underline dotted var(--mantine-color-dark-2);
+    text-underline-offset: 3px;
+  }
+}
+
+@media (pointer: coarse) {
+  /* Pull-to-refresh reloads the page, which forgets every view and ends every open shell. */
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+  .app-main,
+  .log-viewer,
+  .files-scroll {
+    overscroll-behavior-y: contain;
+  }
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  a,
+  label,
+  input,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* Targets a finger can hit. ActionIcon and Button clip their overflow, so a larger invisible hit
+     area would be cut off; the box itself grows instead. Icons inside an input stay as they are. */
+  .mantine-ActionIcon-root:not(.mantine-Input-section *) {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .mantine-Button-root {
+    min-height: 40px;
+  }
+  .mantine-Menu-item,
+  .mantine-NavLink-root,
+  .mantine-Tabs-tab {
+    min-height: 44px;
+  }
+  .mantine-Combobox-option {
+    min-height: 40px;
+  }
+  button.mantine-Badge-root {
+    min-height: 32px;
+  }
+
+  /* iOS zooms into any field whose text is under 16px and does not zoom back out. */
+  .mantine-Input-input,
+  .mantine-PillsInput-input,
+  .xterm-helper-textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Phones. */
+@media (max-width: 47.99375em) {
+  :root {
+    --tabbar-h: calc(56px + env(safe-area-inset-bottom));
+  }
+
+  /* A form's finishing buttons stay under the thumb, above the tab bar, sharing the width. */
+  .sticky-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-inline: calc(var(--mantine-spacing-sm) * -1);
+    padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+    background: var(--mantine-color-dark-7);
+    border-top: 1px solid var(--mantine-color-dark-4);
+  }
+  .sticky-actions > .mantine-Button-root {
+    flex: 1 1 0;
+  }
+  .responsive-overlay .sticky-actions {
+    padding-bottom: calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom));
+  }
+
+  /* Full-screen drawers and modals keep their last line clear of the home indicator. */
+  .responsive-overlay .mantine-Drawer-body,
+  .responsive-overlay .mantine-Modal-body {
+    padding-bottom: calc(var(--mantine-spacing-md) + env(safe-area-inset-bottom));
+  }
+}
