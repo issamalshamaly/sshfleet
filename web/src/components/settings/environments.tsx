@@ -10,15 +10,12 @@ import {
   Group,
   List,
   Loader,
-  Modal,
   ScrollArea,
-  SegmentedControl,
   Select,
   Stack,
   TagsInput,
   Text,
   TextInput,
-  Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -34,7 +31,9 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { ConnectionTest, EnvironmentSettings, KeyInfo, ProjectSettings, Settings } from "../../api/types";
 import { useInvalidateSettings } from "../../hooks/useSettings";
+import { useIsPhone } from "../../lib/responsive";
 import { envColor } from "../../theme";
+import { InfoTip, ResponsiveModal, ResponsiveSegmented, StickyActions } from "../responsive";
 
 /** The pieces that manage one environment: its add/edit form, the key badge and the
  *  connection-test result. They live with the project panel that hosts them. */
@@ -51,8 +50,9 @@ export function KeyBadge({ info, path }: { info: KeyInfo | null; path?: string }
     );
   }
   return (
-    <Group gap={8} wrap="nowrap">
-      <Text size="sm" className="mono">
+    // A long key path wraps rather than pushing its badge off a narrow screen.
+    <Group gap={8} wrap="wrap">
+      <Text size="sm" className="mono" style={{ overflowWrap: "anywhere" }}>
         {info.path}
       </Text>
       {info.ok ? (
@@ -60,11 +60,11 @@ export function KeyBadge({ info, path }: { info: KeyInfo | null; path?: string }
           mode {info.mode}
         </Badge>
       ) : (
-        <Tooltip label={info.problems.join("; ") + (info.fix ? ` — fix: ${info.fix}` : "")} multiline maw={340}>
+        <InfoTip label={info.problems.join("; ") + (info.fix ? ` — fix: ${info.fix}` : "")} multiline maw={340}>
           <Badge color="red" variant="light" size="sm" leftSection={<IconAlertTriangle size={11} />}>
             {info.exists ? `mode ${info.mode}` : "missing"}
           </Badge>
-        </Tooltip>
+        </InfoTip>
       )}
     </Group>
   );
@@ -188,14 +188,17 @@ export function EnvironmentModal({
   });
 
   const parseError = preview.isError ? String((preview.error as Error).message) : null;
+  const phone = useIsPhone();
   const ready = name.trim().length > 0 && !!project && (mode === "new" || path.trim().length > 3) && !save.isPending;
 
   return (
-    <Modal opened={opened} onClose={onClose} title={editing ? `Edit ${editing.name}` : "Add an environment"} size="lg" centered>
-      <ScrollArea.Autosize mah="calc(100vh - 240px)" type="auto" offsetScrollbars>
+    <ResponsiveModal opened={opened} onClose={onClose} title={editing ? `Edit ${editing.name}` : "Add an environment"} size="lg" centered>
+      <ScrollArea.Autosize mah={phone ? undefined : "calc(100vh - 240px)"} type="auto" offsetScrollbars>
         <Stack gap="sm" pr={4}>
         {!editing && (
-          <SegmentedControl
+          // Two long labels side by side are cut to "Use an existing SS…" on a phone; stacked they fit.
+          <ResponsiveSegmented
+            phone="vertical"
             fullWidth
             size="sm"
             value={mode}
@@ -244,8 +247,8 @@ export function EnvironmentModal({
           renderOption={({ option }) => {
             const candidate = candidates.data?.find((c) => c.path === option.value);
             return (
-              <Group justify="space-between" w="100%" wrap="nowrap">
-                <Text size="sm" className="mono">
+              <Group justify="space-between" w="100%" wrap={phone ? "wrap" : "nowrap"}>
+                <Text size="sm" className="mono" style={{ overflowWrap: "anywhere" }}>
                   {option.value}
                 </Text>
                 <Group gap={6}>
@@ -310,7 +313,7 @@ export function EnvironmentModal({
         )}
 
         <Grid align="flex-end" gutter="sm">
-          <Grid.Col span={5}>
+          <Grid.Col span={{ base: 12, sm: 5 }}>
             <TextInput
               label="Name"
               description="How you refer to it"
@@ -320,7 +323,7 @@ export function EnvironmentModal({
               disabled={!!editing}
             />
           </Grid.Col>
-          <Grid.Col span={3}>
+          <Grid.Col span={{ base: 12, sm: 3 }}>
             <TextInput
               label="Short label"
               description={mode === "new" && !editing ? "For tables and the file name" : "For tables"}
@@ -329,7 +332,7 @@ export function EnvironmentModal({
               onChange={(e) => setShort(e.currentTarget.value)}
             />
           </Grid.Col>
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <Select
               label="Colour"
               description="Its badge"
@@ -388,14 +391,14 @@ export function EnvironmentModal({
         </Stack>
       </ScrollArea.Autosize>
       <Divider my="sm" />
-      <Group justify="flex-end">
+      <StickyActions>
         <Button variant="default" onClick={onClose}>
           Cancel
         </Button>
         <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!ready}>
           {editing ? "Save changes" : "Register environment"}
         </Button>
-      </Group>
-    </Modal>
+      </StickyActions>
+    </ResponsiveModal>
   );
 }

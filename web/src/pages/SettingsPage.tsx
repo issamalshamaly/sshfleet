@@ -252,7 +252,8 @@ function SoundsCard() {
         value={sounds?.[key] ?? "none"}
         onChange={(value) => value && save.mutate({ [key]: value })}
         allowDeselect={false}
-        w={300}
+        maw={300}
+        style={{ flex: 1 }}
         disabled={!sounds?.enabled}
       />
       <Tooltip label="Play it">
@@ -363,7 +364,7 @@ function PathsTab() {
         <List size="sm" mt="sm" spacing={4}>
           {(settings.data?.watching ?? []).map((path) => (
             <List.Item key={path}>
-              <Text span className="mono" size="sm">
+              <Text span className="mono" size="sm" style={{ overflowWrap: "anywhere" }}>
                 {path}
               </Text>
             </List.Item>
@@ -384,15 +385,16 @@ function PathsTab() {
       <Card withBorder padding="md">
         <Text fw={700}>Where things live</Text>
         <Stack gap={6} mt="sm">
+          {/* A label column and a path column; one under the other on a phone, paths wrapping. */}
           {rows.map(([label, value]) => (
-            <Group key={label} gap="sm" wrap="nowrap">
-              <Text size="sm" c="dimmed" w={200}>
+            <div key={label} className="kv-row">
+              <Text size="sm" c="dimmed">
                 {label}
               </Text>
-              <Text size="sm" className="mono">
+              <Text size="sm" className="mono" style={{ overflowWrap: "anywhere" }}>
                 {value ?? "—"}
               </Text>
-            </Group>
+            </div>
           ))}
         </Stack>
         <Text size="sm" c="dimmed" mt="sm">
@@ -446,8 +448,24 @@ export default function SettingsPage() {
         </Tooltip>
       </Group>
 
+      {/* Six tabs wrap into three rows on a phone; there the section is a dropdown instead. */}
+      <Select
+        hiddenFrom="sm"
+        label="Section"
+        value={tab}
+        onChange={(value) => value && setParams(value !== "projects" ? { tab: value } : {})}
+        allowDeselect={false}
+        data={[
+          { value: "projects", label: "Projects" },
+          { value: "hosts", label: "Hosts" },
+          { value: "checks", label: "Checks" },
+          { value: "files", label: "Paths" },
+          { value: "history", label: "History" },
+          { value: "share", label: "Export & import" },
+        ]}
+      />
       <Tabs value={tab} onChange={(value) => setParams(value && value !== "projects" ? { tab: value } : {})} keepMounted={false}>
-        <Tabs.List>
+        <Tabs.List visibleFrom="sm">
           <Tabs.Tab value="projects" leftSection={<IconStack2 size={15} />}>
             Projects
           </Tabs.Tab>

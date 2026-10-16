@@ -5,11 +5,8 @@ import {
   Card,
   Checkbox,
   Divider,
-  Drawer,
   Group,
   Loader,
-  Modal,
-  SegmentedControl,
   Stack,
   Table,
   Text,
@@ -26,7 +23,9 @@ import type { FileDiff, HistorySource, HistoryState, RestorePlanSummary, Restore
 import { useHistory, useHistoryDetail, useInvalidateSettings } from "../../hooks/useSettings";
 import { fmtAge, fmtDateTime } from "../../lib/format";
 import { usePageLimit, useViewState } from "../../state/views";
+import { useIsPhone } from "../../lib/responsive";
 import { EmptyState } from "../common";
+import { CardActions, DataCard, InfoTip, ResponsiveDrawer, ResponsiveModal, ResponsiveSegmented, StickyActions } from "../responsive";
 import { DiffView } from "./DiffView";
 
 //: States drawn before the table asks whether you want older ones.
@@ -62,16 +61,29 @@ const fileName = (path: string) => path.split("/").pop() ?? path;
 function PathLabel({ path }: { path: string }) {
   const name = fileName(path);
   const folder = path.slice(0, path.length - name.length);
+  // On a phone the whole path is shown, wrapped: there is no hover to reveal the cut part.
+  const phone = useIsPhone();
+  if (phone)
+    return (
+      <Text size="sm" className="mono" style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+        <Text span inherit fw={600}>
+          {name}
+        </Text>{" "}
+        <Text span size="xs" c="dimmed">
+          {folder}
+        </Text>
+      </Text>
+    );
   return (
     <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
       <Text size="sm" className="mono" fw={600} style={{ flexShrink: 0 }}>
         {name}
       </Text>
-      <Tooltip label={path} openDelay={400} multiline maw={520}>
+      <InfoTip label={path} openDelay={400} multiline maw={520}>
         <Text size="xs" c="dimmed" className="mono" truncate="start">
           {folder}
         </Text>
-      </Tooltip>
+      </InfoTip>
     </Group>
   );
 }
@@ -105,18 +117,18 @@ function ChangeChips({ state }: { state: HistoryState }) {
         </Text>
       )}
       {added.length > 0 && (
-        <Tooltip label={added.join(", ")} multiline maw={360}>
+        <InfoTip label={added.join(", ")} multiline maw={360}>
           <Badge size="xs" variant="light" color="teal">
             +{added.length} host{added.length === 1 ? "" : "s"}
           </Badge>
-        </Tooltip>
+        </InfoTip>
       )}
       {removed.length > 0 && (
-        <Tooltip label={removed.join(", ")} multiline maw={360}>
+        <InfoTip label={removed.join(", ")} multiline maw={360}>
           <Badge size="xs" variant="light" color="red">
             −{removed.length} host{removed.length === 1 ? "" : "s"}
           </Badge>
-        </Tooltip>
+        </InfoTip>
       )}
       {!added.length && !removed.length &&
         ssh.slice(0, 2).map((f) => (
@@ -142,6 +154,7 @@ const CHANGE_LABEL: Record<FileDiff["change"], { label: string; color: string }>
 };
 
 function DiffList({ diffs, emptyText }: { diffs: FileDiff[]; emptyText: string }) {
+  const phone = useIsPhone();
   const visible = diffs.filter((d) => d.change !== "same");
   if (!visible.length) {
     return (
@@ -154,7 +167,7 @@ function DiffList({ diffs, emptyText }: { diffs: FileDiff[]; emptyText: string }
     <Stack gap="sm">
       {visible.map((diff) => (
         <Card key={diff.path} withBorder padding={0}>
-          <Group justify="space-between" px="sm" py={6} wrap="nowrap" style={{ borderBottom: diff.diff ? "1px solid var(--mantine-color-dark-4)" : undefined }}>
+          <Group justify="space-between" px="sm" py={6} wrap={phone ? "wrap" : "nowrap"} style={{ borderBottom: diff.diff ? "1px solid var(--mantine-color-dark-4)" : undefined }}>
             <PathLabel path={diff.path} />
             <Badge size="xs" variant="light" color={CHANGE_LABEL[diff.change].color} style={{ flexShrink: 0 }}>
               {CHANGE_LABEL[diff.change].label}
@@ -231,7 +244,7 @@ function StateDrawer({ state, latest, onClose, onRestore }: { state: HistoryStat
   const source = state ? SOURCES[state.source] : null;
 
   return (
-    <Drawer opened={!!state} onClose={onClose} position="right" size="xl" title={state ? <Text fw={700}>{state.reason}</Text> : null}>
+    <ResponsiveDrawer opened={!!state} onClose={onClose} position="right" size="xl" title={state ? <Text fw={700}>{state.reason}</Text> : null}>
       {state && source && (
         <Stack gap="md">
           <Group gap="xs">
@@ -253,7 +266,8 @@ function StateDrawer({ state, latest, onClose, onRestore }: { state: HistoryStat
               </Text>
             </Alert>
           )}
-          <SegmentedControl
+          <ResponsiveSegmented
+            phone="vertical"
             value={against}
             onChange={(value) => setAgainst(value as "previous" | "current")}
             data={[
@@ -314,7 +328,7 @@ function StateDrawer({ state, latest, onClose, onRestore }: { state: HistoryStat
           </Group>
         </Stack>
       )}
-    </Drawer>
+    </ResponsiveDrawer>
   );
 }
 
@@ -332,7 +346,7 @@ function RestoreModal({ state, onClose }: { state: HistoryState | null; onClose:
   const chosen = writes.filter((path) => !skip.has(path));
 
   return (
-    <Modal opened={!!state} onClose={onClose} title={state ? `Restore the state of ${fmtDateTime(state.at)}?` : ""} size="lg" centered>
+    <ResponsiveModal opened={!!state} onClose={onClose} title={state ? `Restore the state of ${fmtDateTime(state.at)}?` : ""} size="lg" centered>
       {state && (
         <Stack gap="sm">
           <Text size="sm">{state.reason}</Text>
@@ -380,7 +394,7 @@ function RestoreModal({ state, onClose }: { state: HistoryState | null; onClose:
               <TextInput value={typed} onChange={(e) => setTyped(e.currentTarget.value)} placeholder={state.code} className="mono" autoFocus />
             </>
           )}
-          <Group justify="flex-end">
+          <StickyActions>
             <Button variant="default" onClick={onClose}>
               Cancel
             </Button>
@@ -397,10 +411,10 @@ function RestoreModal({ state, onClose }: { state: HistoryState | null; onClose:
             >
               Restore {chosen.length < writes.length ? `${chosen.length} of ${writes.length} files` : ""}
             </Button>
-          </Group>
+          </StickyActions>
         </Stack>
       )}
-    </Modal>
+    </ResponsiveModal>
   );
 }
 
@@ -415,6 +429,8 @@ export default function HistoryTab() {
   const latestId = states[0]?.id;
   const rows = useMemo(() => states.filter((s) => matches(filter, s.source)), [states, filter]);
   const total = history.data?.total ?? 0;
+  // On a phone each state is a card; the table's five columns would scroll sideways.
+  const phone = useIsPhone();
 
   return (
     <Stack gap="md">
@@ -424,7 +440,7 @@ export default function HistoryTab() {
           kept whenever they change — from this page, a command, or an editor. Any of them can be put back, and the state you leave is
           kept too, so going back can be undone.
         </Text>
-        <SegmentedControl size="xs" value={filter} onChange={setFilter} data={FILTERS} />
+        <ResponsiveSegmented size="xs" value={filter} onChange={setFilter} data={FILTERS} selectPrefix="Show: " />
       </Group>
 
       {history.data?.busy && (
@@ -433,13 +449,58 @@ export default function HistoryTab() {
         </Alert>
       )}
 
-      <Card withBorder padding={0}>
+      <Card withBorder={!phone} padding={0} bg={phone ? "transparent" : undefined}>
         {history.isLoading ? (
           <Group justify="center" py={48}>
             <Loader />
           </Group>
         ) : rows.length === 0 ? (
           <EmptyState title={states.length ? "Nothing of this kind in the loaded states" : "No history yet"} hint="States appear here as the configuration changes." />
+        ) : phone ? (
+          <Stack gap="sm">
+            {rows.map((state) => {
+              const source = SOURCES[state.source] ?? SOURCES.cli;
+              const latest = state.id === latestId;
+              return (
+                <DataCard key={state.id} onClick={() => setViewing(state)}>
+                  <Group gap={6} wrap="wrap">
+                    <Text size="sm" fw={600}>
+                      {state.reason}
+                    </Text>
+                    {latest && (
+                      <Badge size="xs" variant="outline" color="teal">
+                        now
+                      </Badge>
+                    )}
+                  </Group>
+                  <Group gap={6} mt={4} wrap="wrap">
+                    <Badge size="sm" variant="light" color={source.color}>
+                      {source.label}
+                    </Badge>
+                    <Text size="xs" c="dimmed">
+                      {fmtDateTime(state.at)} · {ageOf(state.at)} ago
+                    </Text>
+                  </Group>
+                  {!state.valid && (
+                    <Text size="xs" c="red.4" mt={4}>
+                      Does not load: {state.error}
+                    </Text>
+                  )}
+                  <div style={{ marginTop: 8 }}>
+                    <ChangeChips state={state} />
+                  </div>
+                  <CardActions>
+                    <Button variant="default" leftSection={<IconEye size={15} />} onClick={() => setViewing(state)}>
+                      View
+                    </Button>
+                    <Button variant="light" leftSection={<IconArrowBackUp size={15} />} disabled={latest || !state.valid} onClick={() => setRestoring(state)}>
+                      {latest ? "Current state" : "Restore"}
+                    </Button>
+                  </CardActions>
+                </DataCard>
+              );
+            })}
+          </Stack>
         ) : (
           <Table.ScrollContainer minWidth={860}>
             <Table highlightOnHover verticalSpacing={8}>
@@ -459,18 +520,18 @@ export default function HistoryTab() {
                   return (
                     <Table.Tr key={state.id} className="host-row" onClick={() => setViewing(state)}>
                       <Table.Td>
-                        <Tooltip label={fmtDateTime(state.at)} openDelay={300}>
+                        <InfoTip label={fmtDateTime(state.at)} openDelay={300}>
                           <Text size="sm" style={{ whiteSpace: "nowrap" }}>
                             {ageOf(state.at)} ago
                           </Text>
-                        </Tooltip>
+                        </InfoTip>
                       </Table.Td>
                       <Table.Td>
-                        <Tooltip label={source.hint} openDelay={300}>
+                        <InfoTip label={source.hint} openDelay={300}>
                           <Badge size="sm" variant="light" color={source.color}>
                             {source.label}
                           </Badge>
-                        </Tooltip>
+                        </InfoTip>
                       </Table.Td>
                       <Table.Td>
                         <Group gap={6} wrap="nowrap">
@@ -481,11 +542,11 @@ export default function HistoryTab() {
                             </Badge>
                           )}
                           {!state.valid && (
-                            <Tooltip label={state.error} multiline maw={360}>
+                            <InfoTip label={state.error} multiline maw={360}>
                               <Badge size="xs" color="red" variant="light">
                                 does not load
                               </Badge>
-                            </Tooltip>
+                            </InfoTip>
                           )}
                         </Group>
                       </Table.Td>

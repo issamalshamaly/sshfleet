@@ -8,9 +8,7 @@ import {
   Group,
   List,
   Loader,
-  Modal,
   MultiSelect,
-  SegmentedControl,
   Stack,
   Switch,
   Text,
@@ -28,6 +26,8 @@ import { useInvalidateSettings } from "../../hooks/useSettings";
 import { saveBlob } from "../../lib/download";
 import { fmtDateTime } from "../../lib/format";
 import { useViewState } from "../../state/views";
+import { useNoHover } from "../../lib/responsive";
+import { ResponsiveModal, ResponsiveSegmented } from "../responsive";
 import { DiffView } from "./DiffView";
 
 const MAX_BUNDLE = 5 * 1024 * 1024;
@@ -132,7 +132,7 @@ function ExportCard({ settings }: { settings: Settings | undefined }) {
           value={chosenProjects}
           onChange={pickProjects}
           clearable
-          w={260}
+          w={{ base: "100%", xs: 260 }}
         />
         {chosenProjects.length > 0 && (
           <MultiSelect
@@ -142,7 +142,7 @@ function ExportCard({ settings }: { settings: Settings | undefined }) {
             value={chosenEnvironments}
             onChange={setEnvironments}
             clearable
-            w={300}
+            w={{ base: "100%", xs: 300 }}
             nothingFoundMessage="No environment in this project"
           />
         )}
@@ -296,7 +296,7 @@ function ImportModal({ file, onClose }: { file: { name: string; text: string } |
   const set = (patch: Partial<ImportOptions>) => setOptions((current) => ({ ...current, ...patch }));
 
   return (
-    <Modal opened={!!file} onClose={onClose} title={file ? `Import ${file.name}` : ""} size="xl">
+    <ResponsiveModal opened={!!file} onClose={onClose} title={file ? `Import ${file.name}` : ""} size="xl">
       {file && (
         <Stack gap="md">
           {about && (
@@ -312,7 +312,8 @@ function ImportModal({ file, onClose }: { file: { name: string; text: string } |
               <Text size="xs" fw={600} mb={4}>
                 How
               </Text>
-              <SegmentedControl
+              <ResponsiveSegmented
+                phone="vertical"
                 size="xs"
                 value={options.mode}
                 onChange={(value) => set({ mode: value as ImportOptions["mode"] })}
@@ -326,7 +327,8 @@ function ImportModal({ file, onClose }: { file: { name: string; text: string } |
               <Text size="xs" fw={600} mb={4}>
                 Where they differ
               </Text>
-              <SegmentedControl
+              <ResponsiveSegmented
+                phone="vertical"
                 size="xs"
                 value={options.prefer}
                 onChange={(value) => set({ prefer: value as ImportOptions["prefer"] })}
@@ -440,12 +442,13 @@ function ImportModal({ file, onClose }: { file: { name: string; text: string } |
           </Group>
         </Stack>
       )}
-    </Modal>
+    </ResponsiveModal>
   );
 }
 
 function ImportCard() {
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
+  const noHover = useNoHover();
   return (
     <Card withBorder padding="md">
       <Group gap="xs">
@@ -472,7 +475,7 @@ function ImportCard() {
           <IconFileImport size={22} style={{ opacity: 0.6 }} />
           <div>
             <Text size="sm" fw={600}>
-              Drop a bundle here, or click to choose one
+              {noHover ? "Tap to choose a bundle" : "Drop a bundle here, or click to choose one"}
             </Text>
             <Text size="xs" c="dimmed">
               A folder kept in git imports with <Code>sshfleet config import ops/sshfleet/</Code>

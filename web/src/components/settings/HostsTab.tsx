@@ -38,6 +38,8 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { HostSettings, Settings } from "../../api/types";
 import { useConfig } from "../../hooks/useFleet";
+import { useIsPhone } from "../../lib/responsive";
+import { CardActions, DataCard, Field, InfoTip, ResponsiveModal, StickyActions } from "../responsive";
 import { useInvalidateSettings, renderStanza, useSettingsHosts } from "../../hooks/useSettings";
 import { pauseReason } from "../../lib/pause";
 import { useEnv } from "../../state/env";
@@ -244,15 +246,17 @@ function HostModal({
   });
 
   const file = editing?.source ?? environment?.ssh_config_path ?? "";
+  const phone = useIsPhone();
   const valid = form.alias.trim().length > 0 && form.env.length > 0;
 
   return (
-    <Modal opened={opened} onClose={onClose} title={editing ? `Edit ${editing.alias}` : "Add a host"} size="lg" centered>
-      {/* The form scrolls inside the modal so the buttons stay reachable on a short screen. */}
-      <ScrollArea.Autosize mah="calc(100vh - 240px)" type="auto" offsetScrollbars>
+    <ResponsiveModal opened={opened} onClose={onClose} title={editing ? `Edit ${editing.alias}` : "Add a host"} size="lg" centered>
+      {/* The form scrolls inside the modal so the buttons stay reachable on a short screen. A
+          phone's modal is the whole screen and scrolls itself, its buttons pinned at the bottom. */}
+      <ScrollArea.Autosize mah={phone ? undefined : "calc(100vh - 240px)"} type="auto" offsetScrollbars>
         <Stack gap="sm" pr={4}>
         <Grid align="flex-end" gutter="sm">
-          <Grid.Col span={5}>
+          <Grid.Col span={{ base: 12, sm: 5 }}>
             <Select
               label="Environment"
               description="Where it is written"
@@ -262,7 +266,7 @@ function HostModal({
               disabled={!!editing}
             />
           </Grid.Col>
-          <Grid.Col span={7}>
+          <Grid.Col span={{ base: 12, sm: 7 }}>
             <TextInput
               label="Alias"
               description={
@@ -288,7 +292,7 @@ function HostModal({
             />
           </Grid.Col>
 
-          <Grid.Col span={6}>
+          <Grid.Col span={{ base: 12, sm: 6 }}>
             <TextInput
               label="Address"
               description="Private IP or DNS name"
@@ -297,7 +301,7 @@ function HostModal({
               onChange={(e) => set("hostname", e.currentTarget.value)}
             />
           </Grid.Col>
-          <Grid.Col span={3}>
+          <Grid.Col span={{ base: 8, sm: 3 }}>
             <TextInput
               label="User"
               description="Login name"
@@ -306,7 +310,7 @@ function HostModal({
               onChange={(e) => set("user", e.currentTarget.value)}
             />
           </Grid.Col>
-          <Grid.Col span={3}>
+          <Grid.Col span={{ base: 4, sm: 3 }}>
             <NumberInput
               label="Port"
               description="Default 22"
@@ -370,7 +374,7 @@ function HostModal({
           />
         )}
         <Grid align="flex-end" gutter="sm">
-          <Grid.Col span={6}>
+          <Grid.Col span={{ base: 12, sm: 6 }}>
             <TextInput
               label="Display name"
               description="Shown instead of the alias"
@@ -379,7 +383,7 @@ function HostModal({
               onChange={(e) => set("display", e.currentTarget.value)}
             />
           </Grid.Col>
-          <Grid.Col span={3}>
+          <Grid.Col span={{ base: 6, sm: 3 }}>
             <TextInput
               label="Short label"
               description="Tag in merged log output"
@@ -388,7 +392,7 @@ function HostModal({
               onChange={(e) => set("label", e.currentTarget.value)}
             />
           </Grid.Col>
-          <Grid.Col span={3}>
+          <Grid.Col span={{ base: 6, sm: 3 }}>
             <Select
               label="Role"
               description="Colour, and nginx logs"
@@ -418,7 +422,7 @@ function HostModal({
         <TagsInput label="Tags" value={form.tags} onChange={(value) => set("tags", value)} placeholder="optional" />
 
         <Grid align="flex-end" gutter="sm">
-          <Grid.Col span={3}>
+          <Grid.Col span={{ base: 12, sm: 3 }}>
             <NumberInput
               label="Health port"
               description="Empty uses the service"
@@ -430,7 +434,7 @@ function HostModal({
               allowDecimal={false}
             />
           </Grid.Col>
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <TextInput
               label="Health path"
               description="Empty uses the service"
@@ -439,7 +443,7 @@ function HostModal({
               onChange={(e) => set("healthPath", e.currentTarget.value)}
             />
           </Grid.Col>
-          <Grid.Col span={5}>
+          <Grid.Col span={{ base: 12, sm: 5 }}>
             <Select
               label="Check this endpoint"
               description="Some endpoints log every call"
@@ -460,7 +464,7 @@ function HostModal({
         </Text>
 
         <Grid align="flex-end" gutter="sm">
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <NumberInput
               label="Expected containers"
               description="Empty = learn from what is seen"
@@ -472,7 +476,7 @@ function HostModal({
               allowDecimal={false}
             />
           </Grid.Col>
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <NumberInput
               label="Connect timeout"
               description="Seconds. Empty = the fleet-wide one"
@@ -484,7 +488,7 @@ function HostModal({
               allowDecimal={false}
             />
           </Grid.Col>
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <TagsInput
               label="Ignored containers"
               description="Never alerted on. Wildcards allowed: destination-*"
@@ -520,15 +524,15 @@ function HostModal({
         </Stack>
       </ScrollArea.Autosize>
       <Divider my="sm" />
-      <Group justify="flex-end">
+      <StickyActions>
         <Button variant="default" onClick={onClose}>
           Cancel
         </Button>
         <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!valid}>
           {editing ? "Save changes" : "Add host"}
         </Button>
-      </Group>
-    </Modal>
+      </StickyActions>
+    </ResponsiveModal>
   );
 }
 
@@ -598,6 +602,8 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
   const [limit, setLimit] = usePageLimit("settings.hosts.limit", JSON.stringify([filter, env, project]), PAGE);
   const rows = all.slice(0, limit);
   const more = all.length - rows.length;
+  // Eight columns do not fit a phone: a host is a card there, its buttons spelled out.
+  const phone = useIsPhone();
 
   return (
     <Stack gap="md">
@@ -612,7 +618,7 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
       </Group>
 
       <Group gap="sm">
-        <SearchInput placeholder="Filter by alias, address, user or service…" value={filter} onChange={setFilter} w={340} />
+        <SearchInput placeholder="Filter by alias, address, user or service…" value={filter} onChange={setFilter} w={{ base: "100%", sm: 340 }} />
         {/* No environment picker here: the sidebar is the one in the app, and two controls for
             the same thing disagreed with each other. The Env column says which is which. */}
         <Text size="sm" c="dimmed">
@@ -620,9 +626,76 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
         </Text>
       </Group>
 
-      <Card withBorder padding={0}>
+      <Card withBorder={!phone} padding={0} bg={phone ? "transparent" : undefined}>
         {all.length === 0 ? (
           <EmptyState title="No hosts match" hint="Register an environment, or clear the filter." />
+        ) : phone ? (
+          <Stack gap="sm">
+            {rows.map((host) => (
+              <DataCard key={host.alias}>
+                <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                  <div style={{ minWidth: 0 }}>
+                    <Group gap={6} wrap="nowrap">
+                      <Text size="sm" fw={600} className="mono" truncate>
+                        {host.alias}
+                      </Text>
+                      {host.main && <IconStarFilled size={12} color="var(--mantine-color-yellow-5)" style={{ flexShrink: 0 }} />}
+                    </Group>
+                    {host.display && (
+                      <Text size="xs" c="dimmed">
+                        {host.display}
+                      </Text>
+                    )}
+                  </div>
+                  <EnvBadge env={host.env} environments={config.data?.environments} />
+                </Group>
+                {host.paused_by && (
+                  <Text size="xs" c="orange.4" mt={4}>
+                    {pauseReason(host)}
+                  </Text>
+                )}
+                <Group grow mt={8} gap="sm" align="flex-start">
+                  <Field label="Address">
+                    <Text span inherit className="mono">
+                      {host.user ? `${host.user}@` : ""}
+                      {host.hostname ?? "—"}
+                      {host.port ? `:${host.port}` : ""}
+                    </Text>
+                  </Field>
+                  <Field label="Connects through">
+                    <Text span inherit className="mono">
+                      {host.proxy_jump ?? (host.is_bastion ? "bastion, directly" : "directly")}
+                    </Text>
+                  </Field>
+                </Group>
+                <Text size="xs" c="dimmed" mt={6} style={{ overflowWrap: "anywhere" }}>
+                  {host.role}
+                  {host.main ? " · in the default log search" : ""} · {host.source ?? "unknown file"}
+                </Text>
+                {!host.editable && (
+                  <Text size="xs" c="dimmed" mt={4}>
+                    Its file is not writable, so it cannot be removed from here.
+                  </Text>
+                )}
+                <CardActions>
+                  <Button
+                    variant="default"
+                    leftSection={<IconPlugConnected size={15} />}
+                    loading={test.isPending && test.variables === host.alias}
+                    onClick={() => test.mutate(host.alias)}
+                  >
+                    Test
+                  </Button>
+                  <Button variant="default" leftSection={<IconPencil size={15} />} onClick={() => setModal({ open: true, editing: host })}>
+                    Edit
+                  </Button>
+                  <Button variant="outline" color="red" leftSection={<IconTrash size={15} />} disabled={!host.editable} onClick={() => setRemoving(host)}>
+                    Remove
+                  </Button>
+                </CardActions>
+              </DataCard>
+            ))}
+          </Stack>
         ) : (
           <Table.ScrollContainer minWidth={900}>
             <Table highlightOnHover verticalSpacing={8}>
@@ -647,11 +720,11 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
                           {host.alias}
                         </Text>
                         {host.paused_by && (
-                          <Tooltip label={pauseReason(host)} multiline maw={300}>
+                          <InfoTip label={pauseReason(host)} multiline maw={300}>
                             <Badge size="xs" variant="light" color="orange">
                               paused
                             </Badge>
-                          </Tooltip>
+                          </InfoTip>
                         )}
                       </Group>
                       {host.display && (
@@ -692,33 +765,39 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
                       <Group gap={6} wrap="nowrap">
                         <Text size="sm">{host.role}</Text>
                         {host.main && (
-                          <Tooltip label="In the default log search">
+                          <InfoTip label="In the default log search">
                             <IconStarFilled size={12} color="var(--mantine-color-yellow-5)" />
-                          </Tooltip>
+                          </InfoTip>
                         )}
                       </Group>
                     </Table.Td>
                     <Table.Td>
-                      <Tooltip label={host.source ?? "unknown"}>
+                      <InfoTip label={host.source ?? "unknown"}>
                         <Text size="xs" c="dimmed" truncate>
                           {host.source?.split("/").slice(-1)[0] ?? "—"}
                         </Text>
-                      </Tooltip>
+                      </InfoTip>
                     </Table.Td>
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
                         <Tooltip label="Try connecting">
-                          <ActionIcon variant="subtle" color="gray" onClick={() => test.mutate(host.alias)} loading={test.isPending && test.variables === host.alias}>
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            aria-label={`try connecting to ${host.alias}`}
+                            onClick={() => test.mutate(host.alias)}
+                            loading={test.isPending && test.variables === host.alias}
+                          >
                             <IconPlugConnected size={15} />
                           </ActionIcon>
                         </Tooltip>
                         <Tooltip label="Edit">
-                          <ActionIcon variant="subtle" color="gray" onClick={() => setModal({ open: true, editing: host })}>
+                          <ActionIcon variant="subtle" color="gray" aria-label={`edit ${host.alias}`} onClick={() => setModal({ open: true, editing: host })}>
                             <IconPencil size={15} />
                           </ActionIcon>
                         </Tooltip>
                         <Tooltip label={host.editable ? "Remove from the ssh config" : "This file is not writable"}>
-                          <ActionIcon variant="subtle" color="red" disabled={!host.editable} onClick={() => setRemoving(host)}>
+                          <ActionIcon variant="subtle" color="red" aria-label={`remove ${host.alias}`} disabled={!host.editable} onClick={() => setRemoving(host)}>
                             <IconTrash size={15} />
                           </ActionIcon>
                         </Tooltip>

@@ -306,3 +306,16 @@ body {
   max-height: calc(100vh - 400px);
   min-height: 220px;
 }
+
+/* A label and its value side by side: Settings › Paths. */
+.kv-row {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  column-gap: var(--mantine-spacing-sm);
+  align-items: baseline;
+}
+@media (max-width: 47.99375em) {
+  .kv-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

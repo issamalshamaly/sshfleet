@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   Divider,
-  Drawer,
   Group,
   Modal,
   Select,
@@ -35,6 +34,7 @@ import type { ConnectionTest, EnvironmentSettings, PausedBy, ProjectSettings, Se
 import { useInvalidateSettings, usePause } from "../../hooks/useSettings";
 import { envColor } from "../../theme";
 import { EmptyState } from "../common";
+import { ResponsiveDrawer } from "../responsive";
 import { EnvironmentModal, KeyBadge, TestResult } from "./environments";
 
 const COLORS = ["red", "orange", "yellow", "green", "teal", "cyan", "blue", "violet", "grape", "pink", "gray"];
@@ -162,7 +162,7 @@ function ProjectDrawer({
   });
 
   return (
-    <Drawer
+    <ResponsiveDrawer
       opened={!!project}
       onClose={onClose}
       position="right"
@@ -248,7 +248,8 @@ function ProjectDrawer({
               {members.map((environment) => (
                 <Card key={environment.name} withBorder padding="sm">
                   <Group justify="space-between" wrap="nowrap" align="flex-start">
-                    <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                    {/* Badges never shrink (styles.css), so on a narrow screen they wrap instead. */}
+                    <Group gap={8} wrap="wrap" style={{ minWidth: 0 }}>
                       <span
                         style={{ width: 9, height: 9, borderRadius: 5, flexShrink: 0, background: `var(--mantine-color-${envColor(environment.color)}-6)` }}
                       />
@@ -457,7 +458,7 @@ function ProjectDrawer({
           </Group>
         </Stack>
       </Modal>
-    </Drawer>
+    </ResponsiveDrawer>
   );
 }
 
@@ -504,13 +505,23 @@ export default function ProjectsTab({ settings }: { settings: Settings | undefin
   return (
     <Stack gap="md">
       {includeMissing && include.data && (
-        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title="Plain ssh does not read these files yet">
+        <Alert
+          color="yellow"
+          variant="light"
+          icon={<IconAlertTriangle size={16} />}
+          title="Plain ssh does not read these files yet"
+          // A long path is one unbreakable word; without this it widened the alert past a phone.
+          styles={{ body: { minWidth: 0 } }}
+        >
           <Text size="sm">
             sshfleet reaches every host through its own generated config, so nothing here is broken. But{" "}
             <Code>ssh &lt;alias&gt;</Code> in a terminal only sees files under <Text span className="mono">config.d</Text> when{" "}
-            <Text span className="mono">{include.data.config}</Text> includes them. This line at the top of that file fixes it:
+            <Text span className="mono" style={{ overflowWrap: "anywhere" }}>
+              {include.data.config}
+            </Text>{" "}
+            includes them. This line at the top of that file fixes it:
           </Text>
-          <Code block mt={6}>
+          <Code block mt={6} className="phone-wrap">
             {include.data.line}
           </Code>
           <Group mt="sm" gap="sm">
