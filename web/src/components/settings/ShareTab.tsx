@@ -25,6 +25,7 @@ import { useState } from "react";
 import { ApiError, api } from "../../api/client";
 import type { ImportChange, ImportOptions, ImportResult, Settings } from "../../api/types";
 import { useInvalidateSettings } from "../../hooks/useSettings";
+import { saveBlob } from "../../lib/download";
 import { fmtDateTime } from "../../lib/format";
 import { useViewState } from "../../state/views";
 import { DiffView } from "./DiffView";
@@ -51,17 +52,6 @@ const KINDS: Record<ImportChange["kind"], string> = {
 };
 
 const fileName = (path: string) => path.split("/").pop() ?? path;
-
-function save(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 function ExportCard({ settings }: { settings: Settings | undefined }) {
   // Kept between visits like every page's choices (state/views).
@@ -101,7 +91,7 @@ function ExportCard({ settings }: { settings: Settings | undefined }) {
   const exported = useMutation({
     mutationFn: () => api.share.export({ projects: chosenProjects, environments: chosenEnvironments, withLocal, allowCommands }),
     onSuccess: ({ blob, name, warnings }) => {
-      save(blob, name);
+      saveBlob(blob, name);
       notifications.show({
         title: `Saved ${name}`,
         message: warnings.length ? (

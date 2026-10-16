@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Annotated
 
 import typer
@@ -140,31 +139,3 @@ def desktop(
     from ..web import run_desktop
 
     run_desktop(port=port)
-
-
-def audit(
-    limit: Annotated[int, typer.Option("--limit", "-n", help="How many entries to show.")] = 50,
-    as_json: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    """Show the local audit trail of mutating actions."""
-    context = build_context(write_ssh_config=False)
-    entries = context.audit.tail(limit)
-    if as_json:
-        emit_json(entries)
-        return
-    if not entries:
-        console.print("no audit entries yet")
-        return
-    rows = [
-        [
-            e.get("ts", ""),
-            e.get("action", ""),
-            e.get("env", ""),
-            e.get("host", ""),
-            e.get("target", ""),
-            e.get("status", ""),
-            json.dumps(e.get("verify")) if e.get("verify") else "",
-        ]
-        for e in entries
-    ]
-    console.print(table(f"Audit (last {len(entries)})", ["time", "action", "env", "host", "target", "status", "verify"], rows))

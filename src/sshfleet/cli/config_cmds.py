@@ -224,7 +224,7 @@ def restore(
         "config.restore",
         target=target.id,
         status="ok",
-        note=f"cli; {len(written)} file(s) written; before {before.id if before else '?'}, after {after.id}",
+        note=f"cli; {len(written)} file(s) written" + (f"; undo by restoring {before.code}" if before else ""),
     )
     if as_json:
         emit_json({"plan": plan.to_dict(), "written": written, "before": before.id if before else None, "after": after.id})

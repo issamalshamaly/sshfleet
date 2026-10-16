@@ -11,6 +11,7 @@ import sys
 import typer
 
 from . import (
+    audit_cmds,
     config_cmds,
     container_cmds,
     env_cmds,
@@ -50,7 +51,7 @@ app.add_typer(service_cmds.app, name="service")
 app.command("ssh")(misc_cmds.ssh)
 app.command("doctor")(misc_cmds.doctor)
 app.command("hosts")(misc_cmds.hosts)
-app.command("audit")(misc_cmds.audit)
+app.add_typer(audit_cmds.app, name="audit")
 
 
 @app.command("version")

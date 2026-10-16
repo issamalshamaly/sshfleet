@@ -1,5 +1,6 @@
 // Thin fetch wrapper. Every request carries the per-session token the page was served with.
 
+import { attachmentName } from "../lib/download";
 import type {
   AppConfig,
   AuditPage,
@@ -64,6 +65,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+export interface AuditQuery {
+  limit?: number;
+  action?: string | null;
+  /** The environments in view; entries that belong to none are always included. */
+  envs?: string[];
+  since?: string | null;
+}
+
+function auditParams(opts: AuditQuery): string {
+  const params = new URLSearchParams();
+  if (opts.action) params.set("action", opts.action);
+  if (opts.envs) params.set("envs", opts.envs.join(","));
+  if (opts.since) params.set("since", opts.since);
+  return params.toString();
 }
 
 function importParams(opts: ImportOptions): string {
@@ -147,7 +164,13 @@ export const api = {
     bundles: () => request<Bundle[]>("/api/logs/bundles"),
     bundleZipUrl: (name: string) => `/api/logs/bundles/${encodeURIComponent(name)}.zip?token=${encodeURIComponent(sessionToken())}`,
   },
-  audit: (limit = 200) => request<AuditPage>(`/api/audit?limit=${limit}`),
+  audit: (opts: AuditQuery) => request<AuditPage>(`/api/audit?${auditParams(opts)}&limit=${opts.limit ?? 200}`),
+  /** Every matching entry as CSV or JSON Lines, to save. */
+  auditExport: async (format: "csv" | "jsonl", opts: AuditQuery) => {
+    const response = await fetch(`/api/audit/export?${auditParams(opts)}&format=${format}`, { headers: { "x-sshfleet-token": sessionToken() } });
+    if (!response.ok) throw new ApiError(response.status, (await response.json().catch(() => ({}))).detail ?? response.statusText);
+    return { blob: await response.blob(), name: attachmentName(response, `sshfleet-audit.${format}`) };
+  },
   share: {
     /** The bundle as a file to save, with the server's note of anything it left out. Fetched with
      *  the session header — never a token in an address — and handed to the browser as a Blob. */
@@ -167,7 +190,7 @@ export const api = {
         }
         throw new ApiError(response.status, detail);
       }
-      const name = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? "sshfleet-bundle.json";
+      const name = attachmentName(response, "sshfleet-bundle.json");
       let warnings: string[] = [];
       try {
         warnings = JSON.parse(response.headers.get("x-sshfleet-warnings") ?? "[]");

@@ -670,5 +670,8 @@ export interface AuditEntry {
 
 export interface AuditPage {
   entries: AuditEntry[];
+  /** How many entries match, in the whole trail. */
   total: number;
+  /** Every action name in the trail, for the filter. */
+  actions: string[];
 }

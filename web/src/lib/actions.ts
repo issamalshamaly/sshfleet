@@ -28,6 +28,14 @@ const LABELS: Record<string, string> = {
   "settings.tunnel.remove": "Tunnel deleted",
   "settings.refresh": "Check interval changed",
   "settings.thresholds": "Alert levels changed",
+  "settings.project.add": "Project created",
+  "settings.project.update": "Project changed",
+  "settings.project.rename": "Project renamed",
+  "settings.project.remove": "Project removed",
+  "config.restore": "Configuration restored",
+  "config.import": "Bundle imported",
+  "config.export": "Bundle exported",
+  "audit.export": "Audit trail exported",
 };
 
 /** Colour by what the action touches, so the column scans at a glance. */
@@ -40,6 +48,8 @@ const COLORS: Record<string, string> = {
   mux: "gray",
   env: "yellow",
   settings: "yellow",
+  config: "grape",
+  audit: "gray",
 };
 
 export function actionLabel(action: string): string {

@@ -415,7 +415,7 @@ class WebState:
                 "config.restore",
                 target=target.id,
                 status="ok" if summary is None or summary.get("ok") else "failed",
-                note=f"{len(written)} file(s) written; before {before.id if before else '?'}, after {after.id if after else '?'}",
+                note=f"{len(written)} file(s) written" + (f"; undo by restoring {before.code}" if before and written else ""),
             )
             return {
                 "ok": summary is None or bool(summary.get("ok")),
@@ -458,7 +458,7 @@ class WebState:
                 "config.import",
                 target=origin,
                 status="ok" if summary.get("ok") else "failed",
-                note=f"{plan.mode}; {added} added, {updated} updated, {len(written)} file(s) written; before {before.id if before else '?'}",
+                note=f"{plan.mode}; {added} added, {updated} updated, {len(written)} file(s) written" + (f"; undo by restoring {before.code}" if before else ""),
             )
             return {
                 "ok": bool(summary.get("ok")),
