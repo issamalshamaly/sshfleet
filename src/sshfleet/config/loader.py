@@ -6,13 +6,13 @@ it names key paths and tunnel endpoints even though it never holds secrets.
 
 from __future__ import annotations
 
-import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from ..fsutil import atomic_write
 from . import defaults as D
 from .schema import (
     ConcurrencyCfg,
@@ -55,7 +55,31 @@ def load(path: Path) -> Config:
         raise ConfigError(f"{path}: invalid YAML — {exc}") from exc
     if not isinstance(raw, dict):
         raise ConfigError(f"{path}: expected a mapping at the top level, got {type(raw).__name__}")
-    return load_mapping(raw)
+    return parse_mapping(raw, source=str(path))
+
+
+def parse_text(text: str, *, source: str = "config") -> Config:
+    """Parse config text without touching disk. Every way it can be wrong is a ConfigError, so a
+    caller that checks before writing (restore, import) has one thing to catch."""
+    try:
+        raw = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{source}: invalid YAML — {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{source}: expected a mapping at the top level, got {type(raw).__name__}")
+    return parse_mapping(raw, source=source)
+
+
+def parse_mapping(raw: dict[str, Any], *, source: str = "config") -> Config:
+    """``load_mapping``, with the errors a malformed mapping raises on its way through (an
+    environment with no name, a list where a mapping belongs, a port that is not a number)
+    turned into ConfigError."""
+    try:
+        return load_mapping(raw)
+    except ConfigError:
+        raise
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise ConfigError(f"{source}: {type(exc).__name__}: {exc}") from exc
 
 
 #: What an environment is filed under when a file predates projects and names none.
@@ -166,11 +190,6 @@ def save(config: Config, path: Path) -> None:
     """Atomically write the config, keeping one backup of the previous version."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     text = yaml.safe_dump(to_dict(config), sort_keys=False, allow_unicode=True, width=100)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text)
-    os.chmod(tmp, 0o600)
     if path.exists():
-        backup = path.with_suffix(path.suffix + ".bak")
-        backup.write_text(path.read_text())
-        os.chmod(backup, 0o600)
-    os.replace(tmp, path)
+        atomic_write(path.with_suffix(path.suffix + ".bak"), path.read_bytes(), mode=0o600)
+    atomic_write(path, text, mode=0o600)

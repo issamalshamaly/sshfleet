@@ -15,6 +15,7 @@ calls the current implementation, which is free to change or disappear.
 
 from __future__ import annotations
 
+import copy
 import fnmatch
 import os
 import re
@@ -270,19 +271,31 @@ def upgrade(path: Path) -> str | None:
     if not path.exists():
         return None
     raw = _read(path)
+    if file_version(raw) >= CONFIG_VERSION:
+        return None
+    write_upgraded(path, upgrade_mapping(raw))
+    return f"{path} upgraded to version {CONFIG_VERSION}: services are now properties of each host"
+
+
+def upgrade_mapping(raw: dict[str, Any], aliases: dict[str, list[str]] | None = None) -> dict[str, Any]:
+    """The whole upgrade as a function of the old mapping, validated, writing nothing.
+
+    The one input the conversion cannot compute is which ssh aliases each environment has. By
+    default they are read from the SSH files the mapping names; restore and import pass them in,
+    read from the SSH text they carry, because what is on disk now may not be what the old
+    config was written against.
+    """
     version = file_version(raw)
     if version >= CONFIG_VERSION:
-        return None
-
+        return raw
+    raw = copy.deepcopy(raw)
     if version < 2:
         raw["version"] = 2
         version = 2
     if version < 3:
-        raw = migrate_v2_to_v3(raw, aliases_from_ssh_configs(raw))
-
+        raw = migrate_v2_to_v3(raw, aliases if aliases is not None else aliases_from_ssh_configs(raw))
     _validate_v3(raw)
-    write_upgraded(path, raw)
-    return f"{path} upgraded to version {CONFIG_VERSION}: services are now properties of each host"
+    return raw
 
 
 def _validate_v3(raw: dict[str, Any]) -> None:

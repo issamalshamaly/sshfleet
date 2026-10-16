@@ -11,6 +11,7 @@ import contextlib
 import secrets
 import time
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,9 @@ class WebState:
         self.token = secrets.token_urlsafe(24)
         self.jobs: dict[str, Job] = {}
         self._refresh_lock = asyncio.Lock()
+        # One writer of the configuration at a time. Held by the task inside it, see config_lock.
+        self._config_lock = asyncio.Lock()
+        self._config_owner: asyncio.Task | None = None
         self._loop_task: asyncio.Task | None = None
         self._previous_alerts: dict[str, list] = {}
         self.started_at = time.time()
@@ -231,6 +235,10 @@ class WebState:
         """
         while True:
             await asyncio.sleep(WATCH_INTERVAL_S)
+            # A restore or an import writes several files: wait until it is done and has reloaded
+            # itself, rather than catch it half-way and reload a mix of old and new.
+            if self._config_lock.locked():
+                continue
             try:
                 current = self._fingerprint()
                 if current == self._fingerprints:
@@ -250,12 +258,36 @@ class WebState:
             except Exception as exc:  # pragma: no cover - never let the watcher die
                 self.events.publish({"type": "error", "message": f"config watch failed: {exc}"})
 
+    @contextlib.asynccontextmanager
+    async def config_lock(self) -> AsyncIterator[None]:
+        """Hold the configuration still: no reload, restore or import runs while it is held.
+
+        Two reloads interleaving at the await in the middle of one swapped in an inventory and
+        then reported the other's changes. Re-entrant for the task holding it — a restore holds it
+        across its writes and the reload that follows them — but not for tasks that task starts,
+        which take their turn like anyone else.
+        """
+        task = asyncio.current_task()
+        if task is not None and task is self._config_owner:
+            yield
+            return
+        async with self._config_lock:
+            self._config_owner = task
+            try:
+                yield
+            finally:
+                self._config_owner = None
+
     async def reload(self, *, reason: str = "manual", reload_config: bool = True) -> dict[str, Any]:
         """Re-read config.yaml and the SSH config files and swap in the new inventory.
 
         The Context object is mutated rather than replaced: the fleet service, tunnels and every
         open request hold a reference to it.
         """
+        async with self.config_lock():
+            return await self._reload(reason=reason, reload_config=reload_config)
+
+    async def _reload(self, *, reason: str, reload_config: bool) -> dict[str, Any]:
         context = self.context
         before = {h.alias: (h.hostname, h.user, h.port, h.proxy_jump, h.env) for h in context.inventory.hosts()}
         paused_before = _paused(context.inventory)

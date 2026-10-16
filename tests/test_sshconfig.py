@@ -101,3 +101,29 @@ def test_multiple_proxyjump_hops_keep_the_first(tmp_path: Path):
     path = tmp_path / "cfg"
     path.write_text("Host multi\n    HostName 10.0.0.3\n    ProxyJump first,second\n")
     assert parse_ssh_config(path)[0].proxy_jump == "first"
+
+
+def test_an_include_glob_never_reads_a_key_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """``Include ~/.ssh/*`` matches the private keys too. They are skipped by name before anything
+    opens them — reading key material is the one thing this tool never does."""
+    from sshfleet.inventory import included_files
+
+    ssh = tmp_path / "ssh"
+    ssh.mkdir()
+    (ssh / "work").write_text("Host tst-work\n  HostName 10.0.0.1\n")
+    for name in ("id_ed25519", "deploy.pem", "id_ed25519.pub", "server.key", "laptop.ppk"):
+        (ssh / name).write_text("Host from-a-key\n")
+    main = tmp_path / "main"
+    main.write_text(f"Include {ssh}/*\n")
+
+    opened: list[str] = []
+    original = Path.read_text
+
+    def spy(self: Path, *args, **kwargs):
+        opened.append(self.name)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", spy)
+    assert [s.alias for s in parse_ssh_config(main)] == ["tst-work"]
+    assert [p.name for p in included_files(main)] == ["main", "work"]
+    assert set(opened) == {"main", "work"}

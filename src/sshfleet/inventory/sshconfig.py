@@ -15,6 +15,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _WANTED = {"hostname", "user", "port", "proxyjump", "identityfile"}
+
+#: Files in ~/.ssh that are never read as configuration, matched by name before anything is
+#: opened. Key material must not be read even by accident — an ``Include ~/.ssh/*`` would
+#: otherwise walk straight into the private keys. Backups and public keys are not configuration
+#: either.
+NOT_CONFIG = ("*.pem", "id_*", "*.key", "*.ppk", "*.pub", "known_hosts*", "authorized_keys*", "*.bak", "agent*")
+
+#: What key material looks like inside a file, whatever it is called. Checked before any file's
+#: content is kept or handed out (history, export), as a second line behind the names above.
+_KEY_MARKERS = (b"PRIVATE KEY-----", b"PuTTY-User-Key-File", b"-----BEGIN OPENSSH")
+
+
+def looks_like_key(path: Path) -> bool:
+    """A file never to open as SSH configuration: a key, a public key, a backup, an agent socket."""
+    return any(path.match(pattern) for pattern in NOT_CONFIG)
+
+
+def holds_key_material(data: bytes) -> bool:
+    return any(marker in data for marker in _KEY_MARKERS)
 _SPLIT = re.compile(r"\s*(?:=|\s)\s*")
 
 
@@ -93,7 +112,7 @@ def parse_ssh_config(path: Path, *, _seen: set[Path] | None = None) -> list[Host
                     expanded = path.parent / pattern if pattern.startswith(("./", "../")) else Path.home() / ".ssh" / pattern
                 for found in sorted(glob.glob(str(expanded))):
                     found_path = Path(found)
-                    if found_path.is_file():
+                    if found_path.is_file() and not looks_like_key(found_path):
                         stanzas.extend(parse_ssh_config(found_path, _seen=seen))
             continue
 
@@ -150,7 +169,7 @@ def included_files(path: Path, *, _seen: set[Path] | None = None) -> list[Path]:
                 expanded = path.parent / pattern if pattern.startswith(("./", "../")) else Path.home() / ".ssh" / pattern
             for found in sorted(glob.glob(str(expanded))):
                 found_path = Path(found)
-                if found_path.is_file():
+                if found_path.is_file() and not looks_like_key(found_path):
                     out.extend(included_files(found_path, _seen=seen))
     return out
 

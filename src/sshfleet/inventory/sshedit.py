@@ -12,11 +12,13 @@ the same reason — ``glob(3)`` does not match a leading dot with ``*``.
 
 from __future__ import annotations
 
-import os
+import hashlib
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from ..fsutil import atomic_write, real_path
 
 #: Keywords this module manages. Anything else in a stanza is left exactly as it is.
 CANONICAL = {
@@ -205,15 +207,42 @@ def apply_edit(block: list[str], edit: HostEdit) -> list[str]:
     return out
 
 
+def _backup_prefix(path: Path) -> str:
+    """``<name>--<8 hex>.``: the name to read, the hash of the full path so that two files of the
+    same name (``config`` in two directories), or one whose name starts another's (``prod`` and
+    ``prod.old``), never share — or prune — each other's copies."""
+    digest = hashlib.sha1(str(real_path(path)).encode()).hexdigest()[:8]
+    return f"{path.name}--{digest}."
+
+
+_last_stamp_us = 0
+
+
 def backup_path(path: Path, backups_dir: Path) -> Path:
-    # Milliseconds too: several edits can land inside one second and each deserves its own copy.
-    now = time.time()
-    stamp = f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(now))}{int(now * 1000) % 1000:03d}"
-    return backups_dir / f"{path.name}.{stamp}.bak"
+    # Microseconds, and never the same stamp twice in one process: several edits can land inside
+    # one millisecond, and with a shared name each copy overwrote the one before it.
+    global _last_stamp_us
+    now_us = max(time.time_ns() // 1000, _last_stamp_us + 1)
+    _last_stamp_us = now_us
+    seconds, micros = divmod(now_us, 1_000_000)
+    stamp = f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(seconds))}{micros:06d}"
+    return backups_dir / f"{_backup_prefix(path)}{stamp}.bak"
+
+
+def backups_for(path: Path, backups_dir: Path) -> list[Path]:
+    """This file's copies, oldest first. Copies made before the names carried the path's hash
+    (``<name>.<stamp>.bak``) are listed too, but cannot be told apart from a namesake's."""
+    if not backups_dir.is_dir():
+        return []
+    prefix = _backup_prefix(path)
+    legacy = re.compile(rf"^{re.escape(path.name)}\.\d{{8}}-\d{{9}}\.bak$")
+    found = [p for p in backups_dir.iterdir() if (p.name.startswith(prefix) and p.name.endswith(".bak")) or legacy.match(p.name)]
+    return sorted(found, key=lambda p: p.name.rsplit(".", 2)[-2])
 
 
 def _prune_backups(path: Path, backups_dir: Path) -> None:
-    existing = sorted(backups_dir.glob(f"{path.name}.*.bak"))
+    prefix = _backup_prefix(path)
+    existing = sorted(p for p in backups_dir.iterdir() if p.name.startswith(prefix) and p.name.endswith(".bak"))
     for old in existing[:-_BACKUP_KEEP]:
         old.unlink(missing_ok=True)
 
@@ -225,21 +254,13 @@ def write_lines(path: Path, lines: list[str], backups_dir: Path) -> Path | None:
     nothing to back up, so None comes back.
     """
     backups_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    mode = 0o600
     backup: Path | None = None
     if path.exists():
-        mode = path.stat().st_mode & 0o777
         backup = backup_path(path, backups_dir)
-        backup.write_bytes(path.read_bytes())
-        os.chmod(backup, 0o600)
+        atomic_write(backup, path.read_bytes(), mode=0o600)
         _prune_backups(path, backups_dir)
-
-    # Dot-prefixed so an `Include …/config.d/*` running at this instant cannot pick it up.
-    tmp = path.with_name(f".{path.name}.sshfleet-tmp")
-    tmp.write_text("".join(lines))
-    os.chmod(tmp, mode)
-    os.replace(tmp, path)
+    # Through a symlink to the real file, keeping its mode; a new file is private.
+    atomic_write(path, "".join(lines))
     return backup
 
 

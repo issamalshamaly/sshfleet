@@ -369,3 +369,31 @@ def test_a_config_with_host_overrides_round_trips(tmp_path):
     again = config_loader.load(path)
     assert again.hosts["tst-order"].display == "order box"
     assert again.hosts["tst-order"].tags == ["edge"]
+
+
+def test_saving_through_a_symlink_keeps_the_link(tmp_path: Path):
+    real = tmp_path / "dotfiles" / "config.yaml"
+    real.parent.mkdir()
+    link = tmp_path / "config" / "config.yaml"
+    link.parent.mkdir()
+    config_loader.save(Config(), real)
+    link.symlink_to(real)
+    config_loader.save(Config(environments=[]), link)
+    assert link.is_symlink()
+    assert (real.stat().st_mode & 0o777) == 0o600
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "environments: [{ssh_config_path: /x}]",  # an environment with no name
+        "environments: [plain-string]",  # a list item that is not a mapping
+        "tunnels: {db: {env: e, via: h, remote: 'r:1', local: not-a-port}}",
+        "just a string",
+        "a: [unclosed",
+    ],
+)
+def test_every_way_a_config_can_be_wrong_is_a_config_error(text: str):
+    """Restore and import check before they write, and they can only check for what they catch."""
+    with pytest.raises(ConfigError):
+        config_loader.parse_text(text)

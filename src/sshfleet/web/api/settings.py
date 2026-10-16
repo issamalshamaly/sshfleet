@@ -21,15 +21,13 @@ from ...config import defaults as D
 from ...config import loader as config_loader
 from ...config.schema import HostOverride
 from ...inventory import parse_ssh_config, sshedit
+from ...inventory.sshconfig import looks_like_key
 from ...inventory.sshedit import HostEdit, SshEditError
 from ..security import require_token
 from ..state import WebState
 
 router = APIRouter(prefix="/api/settings", dependencies=[Depends(require_token)])
 
-#: Files in ~/.ssh that are never parsed as configuration, matched by name before anything is
-#: opened. Key material must not be read even by accident.
-NOT_CONFIG = ("*.pem", "id_*", "*.key", "*.pub", "known_hosts*", "authorized_keys*", "*.bak", "agent*")
 KEY_GLOBS = ("*.pem", "id_*", "*.key")
 MAX_CONFIG_BYTES = 2 * 1024 * 1024
 
@@ -39,7 +37,7 @@ def _state(request: Request) -> WebState:
 
 
 def _looks_like_key(path: Path) -> bool:
-    return any(path.match(pattern) for pattern in NOT_CONFIG)
+    return looks_like_key(path)
 
 
 def _save(state: WebState) -> None:
@@ -165,7 +163,7 @@ async def settings(request: Request):
             "ssh_config": str(context.mux.ssh_config),
             "download_dir": str(context.download_dir),
             "audit_file": str(context.paths.audit_file),
-            "backups": str(context.paths.state_dir / "ssh-backups"),
+            "backups": str(context.paths.ssh_backups),
         },
         "watching": [str(p) for p in state.watched_files()],
         "last_reload": state.last_reload,
@@ -569,7 +567,7 @@ async def ssh_include(request: Request):
 async def add_ssh_include(request: Request):
     """Add the Include line, once, with a backup. Only ever on request — never on its own."""
     state = _state(request)
-    backups = state.context.paths.state_dir / "ssh-backups"
+    backups = state.context.paths.ssh_backups
     target = envsetup.ssh_dir() / "config"
     try:
         backup = envsetup.add_include_line(backups)
@@ -753,7 +751,7 @@ async def add_host(request: Request, body: HostBody):
     alias = envsetup.host_alias(env_cfg, body.alias)
     _check_parent(state, alias, body.proxy_jump, env_cfg.name)
 
-    backups = state.context.paths.state_dir / "ssh-backups"
+    backups = state.context.paths.ssh_backups
     try:
         backup = sshedit.add_host(env_cfg.ssh_config_path, alias, _edit_from(body), backups)
     except SshEditError as exc:
@@ -796,7 +794,7 @@ async def update_host(request: Request, alias: str, body: HostPatch):
             raise HTTPException(400, f"{alias} has no source file to edit")
         if body.proxy_jump:
             _check_parent(state, alias, body.proxy_jump, host.env)
-        backups = state.context.paths.state_dir / "ssh-backups"
+        backups = state.context.paths.ssh_backups
         try:
             backup = sshedit.update_host(Path(host.source), alias, edit, backups, new_alias=renamed)
         except SshEditError as exc:
@@ -851,7 +849,7 @@ async def remove_host(request: Request, alias: str, confirm: str = ""):
     if not host.source:
         raise HTTPException(400, f"{alias} has no source file to edit")
 
-    backups = state.context.paths.state_dir / "ssh-backups"
+    backups = state.context.paths.ssh_backups
     try:
         backup = sshedit.remove_host(Path(host.source), alias, backups)
     except SshEditError as exc:

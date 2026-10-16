@@ -428,3 +428,39 @@ async def test_a_source_nobody_offered_is_refused_not_guessed(web):
     _, state = web
     with pytest.raises((KeyError, HTTPException)):
         resolve_sources(state, "testing", Selection(files=[{"host": "tst-order", "id": "nope"}]))
+
+
+async def test_reloads_never_overlap(web, monkeypatch):
+    """Two reloads used to interleave at the await in the middle of one, swapping in one
+    inventory and reporting the other's changes."""
+    _, state = web
+    monkeypatch.setattr(state, "wake", lambda: None)  # no sweep left running when the loop closes
+    active = peak = 0
+    original = state._reload
+
+    async def slow(**kwargs):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.05)
+        try:
+            return await original(**kwargs)
+        finally:
+            active -= 1
+
+    state._reload = slow
+    results = await asyncio.gather(state.reload(reason="one"), state.reload(reason="two"))
+    assert peak == 1
+    assert all(r["ok"] for r in results)
+
+
+async def test_a_task_holding_the_config_can_reload_without_waiting_on_itself(web, monkeypatch):
+    _, state = web
+    monkeypatch.setattr(state, "wake", lambda: None)
+
+    async def restore_like() -> dict:
+        async with state.config_lock():
+            return await state.reload(reason="after writing")
+
+    summary = await asyncio.wait_for(restore_like(), timeout=5)
+    assert summary["ok"]

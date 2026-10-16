@@ -151,3 +151,34 @@ def test_adding_to_a_missing_file_creates_it_privately(tmp_path: Path):
 
     second = add_host(target, "lab-db", HostEdit(hostname="192.0.2.2"), tmp_path / "backups")
     assert second is not None and second.exists()  # from now on every write is backed up
+
+
+def test_backups_of_prod_and_prod_old_do_not_prune_each_other(tmp_path: Path, backups):
+    """Pruning used to glob ``<name>.*.bak``, so twenty edits of ``prod`` deleted every copy of
+    ``prod.old`` — and two files both called ``config`` shared one pile."""
+    from sshfleet.inventory.sshedit import backups_for
+
+    directory = tmp_path / "ssh" / "config.d"
+    directory.mkdir(parents=True)
+    prod, old = directory / "prod", directory / "prod.old"
+    for path in (prod, old):
+        shutil.copy(SAMPLE, path)
+    add_host(old, "tst-kept", HostEdit(hostname="10.0.0.9"), backups)
+    for n in range(25):
+        add_host(prod, f"tst-new-{n}", HostEdit(hostname="10.0.0.1"), backups)
+    assert len(backups_for(old, backups)) == 1
+    assert len(backups_for(prod, backups)) == 20
+
+
+def test_editing_through_a_symlink_keeps_the_link(tmp_path: Path, backups):
+    """Dotfile managers keep the real file elsewhere and link to it from ~/.ssh."""
+    real = tmp_path / "dotfiles" / "test-env"
+    real.parent.mkdir()
+    shutil.copy(SAMPLE, real)
+    link = tmp_path / "ssh" / "config.d" / "test-env"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(real)
+    add_host(link, "tst-linked", HostEdit(hostname="10.0.0.2"), backups)
+    assert link.is_symlink()
+    assert "Host tst-linked" in real.read_text()
+    assert not list(real.parent.glob(".*"))  # no temporary file left behind

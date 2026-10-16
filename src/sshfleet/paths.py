@@ -48,6 +48,16 @@ class Paths:
         return self.state_dir / "audit.jsonl"
 
     @property
+    def ssh_backups(self) -> Path:
+        """A copy of each SSH config file from before every edit sshfleet makes to it."""
+        return self.state_dir / "ssh-backups"
+
+    @property
+    def history_dir(self) -> Path:
+        """Every state the configuration has been in: config.yaml and the SSH files, together."""
+        return self.state_dir / "history"
+
+    @property
     def tunnels_file(self) -> Path:
         return self.cache_dir / "tunnels.json"
 
