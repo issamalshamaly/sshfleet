@@ -1,8 +1,9 @@
-import { Badge, Box, Group, Progress, Text, Tooltip, type MantineColor } from "@mantine/core";
-import { IconPlayerPause } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { Badge, Box, CloseButton, Group, Progress, Text, TextInput, Tooltip, type MantineColor, type TextInputProps } from "@mantine/core";
+import { IconPlayerPause, IconSearch } from "@tabler/icons-react";
+import { useRef, type ReactNode } from "react";
 
 import type { Environment, Host } from "../api/types";
+import { pauseReason } from "../lib/pause";
 import { envColor, severityColor } from "../theme";
 
 export function EnvBadge({ env, environments, size = "sm" }: { env: string; environments?: Environment[]; size?: string }) {
@@ -43,15 +44,7 @@ export function ReachStatus({ host }: { host: Host }) {
   const snapshot = host.snapshot;
   if (host.paused_by) {
     return (
-      <Tooltip
-        label={
-          host.paused_by === host.alias
-            ? "Monitoring paused — sshfleet makes no connection to this host"
-            : `Reached through ${host.paused_by}, whose monitoring is paused`
-        }
-        multiline
-        maw={300}
-      >
+      <Tooltip label={pauseReason(host)} multiline maw={300}>
         <Group gap={6} wrap="nowrap">
           <IconPlayerPause size={12} color="var(--mantine-color-orange-5)" />
           <Text size="sm" c="orange.4" style={{ whiteSpace: "nowrap" }}>
@@ -123,6 +116,62 @@ export function Mono({ children, ...rest }: { children: ReactNode } & React.Comp
     <Text className="mono" size="sm" {...rest}>
       {children}
     </Text>
+  );
+}
+
+type SearchInputProps = Omit<TextInputProps, "value" | "onChange"> & {
+  value: string;
+  onChange: (value: string) => void;
+  /** Escape empties the box too. Off where the text is costly to type again, like a regex. */
+  clearOnEscape?: boolean;
+};
+
+/** A box that narrows something down: the magnifier on the left and, once anything is typed, a
+ *  cross on the right that empties it. Focus stays in the box, ready for the next filter. */
+export function SearchInput({
+  value,
+  onChange,
+  clearOnEscape = true,
+  leftSection = <IconSearch size={15} />,
+  onKeyDown,
+  size,
+  ...rest
+}: SearchInputProps) {
+  const input = useRef<HTMLInputElement>(null);
+  const clear = () => {
+    onChange("");
+    input.current?.focus();
+  };
+  return (
+    <TextInput
+      {...rest}
+      ref={input}
+      size={size}
+      value={value}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        // Only when there is something to clear: an empty box lets Escape through to whatever
+        // it is inside of, a drawer or a modal, which closes as it always did.
+        if (clearOnEscape && event.key === "Escape" && value) {
+          event.stopPropagation();
+          clear();
+        }
+        onKeyDown?.(event);
+      }}
+      leftSection={leftSection}
+      rightSectionPointerEvents="all"
+      rightSection={
+        value ? (
+          <CloseButton
+            size={size === "xs" ? "xs" : "sm"}
+            aria-label="Clear"
+            // Keeps focus in the box, so the click does not blur it first and flicker.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={clear}
+          />
+        ) : null
+      }
+    />
   );
 }
 

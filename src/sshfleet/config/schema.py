@@ -43,13 +43,15 @@ class ProjectCfg:
     """A named grouping of environments, and the outermost thing sshfleet knows about.
 
     It exists in its own right, so one is created before the environments that belong to it, and
-    every environment belongs to exactly one. It carries no behaviour: nothing about how a host is
-    reached or watched comes from here.
+    every environment belongs to exactly one. It carries one behaviour only: pausing it stops
+    monitoring of every host in it. Nothing about how a host is reached comes from here.
     """
 
     name: str
     color: str = "gray"
     description: str = ""
+    #: Monitoring stopped for every host of every environment in it, until it is resumed.
+    paused: bool = False
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> ProjectCfg:
@@ -59,12 +61,15 @@ class ProjectCfg:
             name=str(raw["name"]),
             color=str(raw.get("color") or "gray"),
             description=str(raw.get("description") or ""),
+            paused=bool(raw.get("paused")),
         )
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"name": self.name, "color": self.color}
         if self.description:
             out["description"] = self.description
+        if self.paused:  # written only while it is set
+            out["paused"] = True
         return out
 
 
@@ -80,6 +85,8 @@ class EnvironmentCfg:
     #: The project this environment belongs to. Every environment has one; a file that predates
     #: projects, or one edited by hand, is repaired when it is loaded (see the loader).
     project: str = ""
+    #: Monitoring stopped for every host in it, until it is resumed.
+    paused: bool = False
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> EnvironmentCfg:
@@ -98,6 +105,7 @@ class EnvironmentCfg:
             alias_pattern=str(raw.get("alias_pattern") or "auto"),
             bastions=raw.get("bastions", "auto"),
             project=str(raw.get("project") or ""),
+            paused=bool(raw.get("paused")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -115,6 +123,8 @@ class EnvironmentCfg:
             out["bastions"] = list(self.bastions)
         if self.project:
             out["project"] = self.project
+        if self.paused:  # written only while it is set
+            out["paused"] = True
         return out
 
 

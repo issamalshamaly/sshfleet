@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Card,
@@ -14,7 +15,6 @@ import {
   Switch,
   Table,
   Text,
-  TextInput,
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -25,26 +25,28 @@ import {
   IconPlus,
   IconLock,
   IconLockOpen,
+  IconPlayerPause,
   IconPlayerPlay,
-  IconSearch,
   IconStar,
   IconStarFilled,
   IconTerminal2,
   IconWorld,
 } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import type { Host } from "../api/types";
-import { EmptyState, EnvBadge, PercentBar, ReachStatus, RoleBadge, SeverityBadge } from "../components/common";
+import type { Host, PausedBy } from "../api/types";
+import { EmptyState, EnvBadge, PercentBar, ReachStatus, RoleBadge, SearchInput, SeverityBadge } from "../components/common";
 import { HostDrawer } from "../components/HostDrawer";
 import { api } from "../api/client";
 import { useConfig, useFleet } from "../hooks/useFleet";
-import { useInvalidateSettings, usePauseHost } from "../hooks/useSettings";
+import { useInvalidateSettings, usePause } from "../hooks/useSettings";
 import { fmtAge, fmtUptime } from "../lib/format";
 import { FRESH_LOGS, logsPath } from "../lib/navigation";
+import { pausedItself, pauseTargetLabel } from "../lib/pause";
 import { useEnv } from "../state/env";
 import { useTerminals } from "../state/terminals";
+import { usePageLimit, useViewState } from "../state/views";
 
 type SortKey = "alerts" | "name" | "load" | "mem" | "disk";
 
@@ -159,17 +161,19 @@ function alertsCell(host: Host) {
 }
 
 export default function FleetPage() {
-  const { env, inScope } = useEnv();
+  const { env, project, inScope } = useEnv();
   const config = useConfig();
   const fleet = useFleet();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const [query, setQuery] = useState("");
-  const [role, setRole] = useState("all");
-  const [alertsOnly, setAlertsOnly] = useState(false);
-  const [sort, setSort] = useState<SortKey>("alerts");
-  // A fleet grows; the table does not have to grow with it in one go.
-  const [limit, setLimit] = useState(PAGE);
+  // Kept between visits: the fleet filtered to one service is still filtered when you come back.
+  const [query, setQuery] = useViewState("fleet.query", "");
+  const [role, setRole] = useViewState("fleet.role", "all");
+  const [alertsOnly, setAlertsOnly] = useViewState("fleet.alertsOnly", false);
+  const [sort, setSort] = useViewState<SortKey>("fleet.sort", "alerts");
+  // A fleet grows; the table does not have to grow with it in one go. Narrowing the list is a
+  // new question, so it starts at the top again.
+  const [limit, setLimit] = usePageLimit("fleet.limit", JSON.stringify([env, role, alertsOnly, query]), PAGE);
   const invalidate = useInvalidateSettings();
   // The star decides what the Logs page searches by default; it is saved on the host.
   const toggleMain = useMutation({
@@ -177,8 +181,18 @@ export default function FleetPage() {
     onSuccess: () => invalidate(),
     onError: (error) => notifications.show({ title: "Could not save", message: String((error as Error).message), color: "red" }),
   });
-  const setPaused = usePauseHost();
+  const setPaused = usePause();
   const terminals = useTerminals();
+
+  // A paused project or environment explains a page of paused hosts, so it is named above them
+  // and can be resumed from here. A project's pause covers its environments' own.
+  const pausedScopes = useMemo<PausedBy[]>(() => {
+    if (!project) return [];
+    if (config.data?.projects.find((p) => p.name === project)?.paused) return [{ kind: "project", name: project }];
+    return (config.data?.environments ?? [])
+      .filter((e) => e.project === project && e.paused && inScope(e.name))
+      .map((e) => ({ kind: "environment", name: e.name }));
+  }, [config.data, project, inScope]);
 
   const selectedAlias = params.get("host");
   const thresholds = config.data?.thresholds ?? {};
@@ -220,11 +234,6 @@ export default function FleetPage() {
 
   const shown = hosts.slice(0, limit);
   const more = hosts.length - shown.length;
-
-  // Narrowing the list is a new question, so it starts at the top again.
-  useEffect(() => {
-    setLimit(PAGE);
-  }, [env, role, alertsOnly, query]);
 
   // A paused host is counted apart: it is not down, and sshfleet holds no connection to it.
   const inView = useMemo(() => (fleet.data?.hosts ?? []).filter((h) => inScope(h.env)), [fleet.data, inScope]);
@@ -269,6 +278,36 @@ export default function FleetPage() {
 
   return (
     <Stack gap="md" style={{ flex: 1 }}>
+      {pausedScopes.length > 0 && (
+        <Alert color="orange" variant="light" icon={<IconPlayerPause size={16} />} py="xs">
+          <Group justify="space-between" gap="sm" wrap="wrap">
+            <Text size="sm">
+              {pausedScopes.length === 1
+                ? `${pauseTargetLabel(pausedScopes[0])} is paused — sshfleet makes no connection to its hosts until it is resumed.`
+                : `${pausedScopes.length} environments are paused (${pausedScopes.map((s) => s.name).join(", ")}) — sshfleet makes no connection to their hosts until they are resumed.`}
+            </Text>
+            <Group gap="xs">
+              {pausedScopes.map((target) => (
+                <Button
+                  key={`${target.kind}:${target.name}`}
+                  size="xs"
+                  variant="light"
+                  color="teal"
+                  leftSection={<IconPlayerPlay size={14} />}
+                  loading={
+                    setPaused.isPending &&
+                    setPaused.variables?.target.kind === target.kind &&
+                    setPaused.variables?.target.name === target.name
+                  }
+                  onClick={() => setPaused.mutate({ target, paused: false })}
+                >
+                  Resume {target.name}
+                </Button>
+              ))}
+            </Group>
+          </Group>
+        </Alert>
+      )}
       <SimpleGrid cols={{ base: 2, md: 4 }} spacing="sm">
         <Card withBorder padding="sm">
           <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
@@ -331,14 +370,7 @@ export default function FleetPage() {
 
       <Group justify="space-between" wrap="wrap" gap="sm">
         <Group gap="sm">
-          <TextInput
-            placeholder="Filter by host, service or container…"
-            leftSection={<IconSearch size={15} />}
-            value={query}
-            onChange={(e) => setQuery(e.currentTarget.value)}
-            w={300}
-            size="sm"
-          />
+          <SearchInput placeholder="Filter by host, service or container…" value={query} onChange={setQuery} w={300} size="sm" />
           <SegmentedControl
             size="xs"
             value={role}
@@ -516,14 +548,14 @@ export default function FleetPage() {
                           )}
                           {host.paused_by ? (
                             // Shell, logs and files would all need a connection it is not given.
-                            host.paused_by === host.alias && (
+                            pausedItself(host) && (
                               <Tooltip label="Resume monitoring">
                                 <ActionIcon
                                   variant="subtle"
                                   color="teal"
                                   aria-label={`resume ${host.alias}`}
-                                  loading={setPaused.isPending && setPaused.variables?.host.alias === host.alias}
-                                  onClick={() => setPaused.mutate({ host, paused: false })}
+                                  loading={setPaused.isPending && setPaused.variables?.target.name === host.alias}
+                                  onClick={() => setPaused.mutate({ target: { kind: "host", name: host.alias }, paused: false })}
                                 >
                                   <IconPlayerPlay size={16} />
                                 </ActionIcon>

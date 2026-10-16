@@ -372,7 +372,7 @@ async def test_a_project_is_created_empty_and_an_environment_moves_into_it(web):
     created = await client.post("/api/settings/projects", json={"name": "acme", "color": "violet"})
     assert created.status_code == 200, created.text
     assert created.json()["project"] == {
-        "name": "acme", "color": "violet", "description": "", "environments": [], "hosts": 0
+        "name": "acme", "color": "violet", "description": "", "environments": [], "hosts": 0, "paused": False
     }
 
     response = await client.patch("/api/settings/environments/testing", json={"project": "acme"})

@@ -70,6 +70,7 @@ def _project_payload(state: WebState, project: ProjectCfg) -> dict[str, Any]:
         "description": project.description,
         "environments": members,
         "hosts": sum(len(state.context.inventory.hosts(name)) for name in members),
+        "paused": project.paused,
     }
 
 
@@ -96,6 +97,7 @@ def _environment_payload(state: WebState, env_cfg: EnvironmentCfg) -> dict[str, 
         "hosts": len(hosts),
         "production": "prod" in env_cfg.name.lower(),
         "project": env_cfg.project,
+        "paused": env_cfg.paused,  # its own flag; its project's is on the project
     }
 
 
@@ -126,7 +128,7 @@ def _host_payload(state: WebState, host) -> dict[str, Any]:
         "connect_timeout_s": host.connect_timeout_s,
         "ignored_containers": list(host.ignored_containers),
         "paused": host.paused,
-        "paused_by": state.context.inventory.paused_by(host.alias),
+        "paused_by": paused_by.to_dict() if (paused_by := state.context.inventory.paused_by(host.alias)) else None,
         "source": str(host.source) if host.source else None,
         "editable": bool(host.source) and os.access(host.source, os.W_OK),
         "override": bool(override),
@@ -235,6 +237,7 @@ class ProjectPatch(BaseModel):
     name: str | None = None  # renaming re-points every environment filed under it
     color: str | None = None
     description: str | None = None
+    paused: bool | None = None  # stop monitoring every host in it, closing what is open to them
 
 
 @router.get("/projects")
@@ -274,8 +277,19 @@ async def update_project(request: Request, name: str, body: ProjectPatch):
         project.color = body.color
     if body.description is not None:
         project.description = body.description.strip()
+    pausing = body.paused is not None and body.paused != project.paused
+    if pausing:
+        project.paused = bool(body.paused)
     _save(state)
-    state.context.audit.append("settings.project.update", target=project.name, status="ok")
+    if pausing:
+        # Only a pause changes what is connected to; the reload closes or reopens it now.
+        await state.reload(reason=f"project {project.name} {'paused' if project.paused else 'resumed'}")
+    state.context.audit.append(
+        "settings.project.update",
+        target=project.name,
+        status="ok",
+        note=("paused" if project.paused else "resumed") if pausing else None,
+    )
     return {"ok": True, "project": _project_payload(state, project)}
 
 
@@ -326,6 +340,7 @@ class EnvironmentPatch(BaseModel):
     create: bool = False  # allow ssh_config_path to name a file that does not exist yet
     bastions: list[str] | None = None
     project: str | None = None  # moves it to another project; never empty
+    paused: bool | None = None  # stop monitoring every host in it, closing what is open to them
 
 
 def _known_project(state: WebState, name: str | None) -> str:
@@ -472,10 +487,18 @@ async def update_environment(request: Request, name: str, body: EnvironmentPatch
         env_cfg.bastions = body.bastions or "auto"
     if body.project is not None:
         env_cfg.project = _known_project(state, body.project)
+    pausing = body.paused is not None and body.paused != env_cfg.paused
+    if pausing:
+        env_cfg.paused = bool(body.paused)
 
     _save(state)
     summary = await state.reload(reason=f"environment {env_cfg.name} changed")
-    state.context.audit.append("settings.env.update", env=env_cfg.name, status="ok")
+    state.context.audit.append(
+        "settings.env.update",
+        env=env_cfg.name,
+        status="ok",
+        note=("paused" if env_cfg.paused else "resumed") if pausing else None,
+    )
     return {"ok": True, "environment": _environment_payload(state, env_cfg), "reload": summary}
 
 

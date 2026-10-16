@@ -33,7 +33,8 @@ async def get_config(request: Request):
     return {
         "version": __version__,
         "projects": [
-            {"name": p.name, "color": p.color, "description": p.description} for p in config.projects
+            {"name": p.name, "color": p.color, "description": p.description, "paused": p.paused}
+            for p in config.projects
         ],
         "environments": state.environments_payload(),
         # slotted dataclasses have no __dict__, so vars() would fail here

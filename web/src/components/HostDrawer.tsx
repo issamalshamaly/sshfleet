@@ -35,14 +35,16 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
-import { useInvalidateSettings, usePauseHost } from "../hooks/useSettings";
+import { useInvalidateSettings, usePause } from "../hooks/useSettings";
 import type { Container, Environment, Host } from "../api/types";
 import { fmtAge, fmtBytes, fmtUptime, shortImage } from "../lib/format";
 import { FRESH_LOGS, logsPath } from "../lib/navigation";
+import { pausedItself, pauseTargetLabel } from "../lib/pause";
 import { EmptyState, EnvBadge, ReachStatus, RoleBadge, SeverityBadge } from "./common";
 import { ContainerActions } from "./ContainerActions";
 import { DeleteContainerModal } from "./DeleteContainerModal";
 import { RestartModal } from "./RestartModal";
+import { useViewState } from "../state/views";
 
 interface Props {
   host: Host | null;
@@ -72,8 +74,12 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
   const navigate = useNavigate();
   const [restartTarget, setRestartTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Container | null>(null);
+  // The tab is kept for the host it was chosen on: open a container's logs from the Containers
+  // tab, come back, and the drawer is on Containers still. Another host opens on its overview.
+  const [shownTab, setShownTab] = useViewState("fleet.drawer.tab", { alias: "", tab: "overview" });
+  const tab = host && shownTab.alias === host.alias ? shownTab.tab : "overview";
   const invalidate = useInvalidateSettings();
-  const setPaused = usePauseHost();
+  const setPaused = usePause();
   const toggleMain = () =>
     host
       ? api.settings
@@ -143,13 +149,13 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
               </Stack>
               {host.paused_by ? (
                 // Nothing here may open a connection, so the buttons that would are not offered.
-                host.paused_by === host.alias && (
+                pausedItself(host) && (
                   <Button
                     size="xs"
                     color="teal"
                     leftSection={<IconPlayerPlay size={15} />}
                     loading={setPaused.isPending}
-                    onClick={() => setPaused.mutate({ host, paused: false })}
+                    onClick={() => setPaused.mutate({ target: { kind: "host", name: host.alias }, paused: false })}
                   >
                     Resume monitoring
                   </Button>
@@ -190,7 +196,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                     variant="default"
                     leftSection={<IconPlayerPause size={15} />}
                     loading={setPaused.isPending}
-                    onClick={() => setPaused.mutate({ host, paused: true })}
+                    onClick={() => setPaused.mutate({ target: { kind: "host", name: host.alias }, paused: true })}
                   >
                     Pause
                   </Button>
@@ -201,9 +207,29 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
 
             {host.paused_by && (
               <Alert color="orange" variant="light" icon={<IconPlayerPause size={16} />} title="Monitoring paused">
-                {host.paused_by === host.alias
-                  ? "sshfleet makes no connection to this host — no checks, shells, logs or file transfers — until you resume it."
-                  : `This host is reached through ${host.paused_by}, whose monitoring is paused, so sshfleet does not connect to it either. Resume ${host.paused_by} to bring both back.`}
+                {host.paused_by.kind !== "host" ? (
+                  // The whole environment or project is paused; this host is one of many it holds.
+                  <Stack gap="xs" align="flex-start">
+                    <Text size="sm">
+                      {pauseTargetLabel(host.paused_by)} is paused, so sshfleet makes no connection to any of its hosts — this one
+                      included — until it is resumed.
+                    </Text>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="teal"
+                      leftSection={<IconPlayerPlay size={14} />}
+                      loading={setPaused.isPending}
+                      onClick={() => host.paused_by && setPaused.mutate({ target: host.paused_by, paused: false })}
+                    >
+                      Resume {host.paused_by.kind} {host.paused_by.name}
+                    </Button>
+                  </Stack>
+                ) : pausedItself(host) ? (
+                  "sshfleet makes no connection to this host — no checks, shells, logs or file transfers — until you resume it."
+                ) : (
+                  `This host is reached through ${host.paused_by.name}, whose monitoring is paused, so sshfleet does not connect to it either. Resume ${host.paused_by.name} to bring both back.`
+                )}
               </Alert>
             )}
 
@@ -213,7 +239,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
               </Text>
             )}
 
-            <Tabs defaultValue="overview" keepMounted={false}>
+            <Tabs value={tab} onChange={(value) => host && setShownTab({ alias: host.alias, tab: value ?? "overview" })} keepMounted={false}>
               <Tabs.List>
                 <Tabs.Tab value="overview">Overview</Tabs.Tab>
                 <Tabs.Tab value="containers" rightSection={snapshot ? <Badge size="xs" variant="light" circle>{snapshot.containers.length}</Badge> : null}>

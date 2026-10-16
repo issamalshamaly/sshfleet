@@ -23,6 +23,13 @@
   reach as well, since reaching it would connect through the paused one. The flag is
   `hosts.<alias>.paused: true` in `config.yaml`; editing it there by hand works the same way.
   Paused hosts are counted apart on the fleet page — neither up nor down.
+* A whole environment or a whole project can be paused the same way, from its card in Settings ›
+  Projects (after a confirmation, since it closes every connection to its hosts at once), and
+  resumed there or from the banner the fleet page shows while it is paused. Everything above
+  holds for each of its hosts, including one added while it is paused. The flags are
+  `environments[].paused: true` and `projects[].paused: true`. Each keeps its own: resuming a
+  project leaves an environment or host that was paused on its own still paused, and a host's
+  status names the widest pause holding it (project, then environment, then the host).
 
 ### Fixes
 
@@ -31,6 +38,22 @@
   inside a `Host` block only for hosts matching that block, and each environment's file was
   included right under the previous environment's key block. Every `Include` in the generated
   config now starts from `Match all`.
+
+### Every page
+
+* Every view now comes back as you left it, the way the Logs page already did. The fleet keeps
+  its filter, role, Alerts only switch, sort, how far the table was widened, and the host drawer
+  that was open, on the tab it was on. Files keeps the server, the directory, the hidden-files
+  switch and your place in a long listing. Settings keeps its tab and the Hosts filter, and Audit
+  keeps its action filter and the older entries already loaded. The main column also returns
+  to where each page was scrolled, by the sidebar or by Back and Forward. A Files or Logs icon
+  beside a host is still a new question and opens fresh. All of this lives in memory for as long
+  as the tab is open, and nothing is written anywhere.
+* Search and filter boxes get a clear button once something is typed in them, and Escape clears
+  them too. The Logs pattern field has the button but ignores Escape, so a regex that took a
+  while to write is not lost to a stray keypress.
+* Files: opening another directory, or toggling hidden files, now always starts at the top. A
+  directory that had to load used to open at the previous one's scroll offset.
 
 ### Fleet page
 

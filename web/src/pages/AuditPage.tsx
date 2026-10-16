@@ -1,11 +1,12 @@
 import { Badge, Button, Card, Divider, Group, Select, Stack, Table, Text, Tooltip } from "@mantine/core";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { api } from "../api/client";
 import { EmptyState, EnvBadge } from "../components/common";
 import { useConfig } from "../hooks/useFleet";
 import { useEnv } from "../state/env";
+import { useViewState } from "../state/views";
 import { actionColor, actionLabel } from "../lib/actions";
 import { fmtDateTime } from "../lib/format";
 
@@ -17,8 +18,9 @@ export default function AuditPage() {
   const { inScope } = useEnv();
   // The newest PAGE entries to begin with: the trail grows without bound, and the last page of it
   // is the part anyone opens this screen to read.
-  const [limit, setLimit] = useState(PAGE);
-  const [action, setAction] = useState<string | null>(null);
+  // Both kept between visits, like every page's filters (state/views).
+  const [limit, setLimit] = useViewState("audit.limit", PAGE);
+  const [action, setAction] = useViewState<string | null>("audit.action", null);
   const audit = useQuery({
     queryKey: ["audit", limit],
     queryFn: () => api.audit(limit),

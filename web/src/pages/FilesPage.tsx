@@ -22,9 +22,9 @@ import {
 import { Dropzone } from "@mantine/dropzone";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { IconDownload, IconEye, IconFile, IconFolder, IconLock, IconRefresh, IconUpload } from "@tabler/icons-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -33,6 +33,7 @@ import { EmptyState, EnvBadge } from "../components/common";
 import { useConfig, useFleet } from "../hooks/useFleet";
 import { fmtBytes, fmtDateTime } from "../lib/format";
 import { useEnv } from "../state/env";
+import { useViewState, useViewStore } from "../state/views";
 
 /** A directory can hold thousands of files, so rows are virtualised: only what is on screen exists.
  *  The parent link rides in the same list so it scrolls and measures like any other row. */
@@ -46,13 +47,14 @@ export default function FilesPage() {
   const [params, setParams] = useSearchParams();
 
   const hosts = useMemo(() => (fleet.data?.hosts ?? []).filter((h) => inScope(h.env)), [fleet.data, inScope]);
-  // Nothing is selected on arrival: landing on this page must not connect to a server by
-  // itself, least of all to whichever host happens to sort first.
+  // Nothing is selected on a first arrival: landing on this page must not connect to a server by
+  // itself, least of all to whichever host happens to sort first. A return is different — the
+  // sidebar brings back the address you left, host and directory, because you chose them.
   const alias = params.get("host");
   const host = hosts.find((h) => h.alias === alias) ?? fleet.data?.hosts.find((h) => h.alias === alias) ?? null;
   const [path, setPath] = useState(params.get("path") ?? "");
   const [pathInput, setPathInput] = useState(path);
-  const [hidden, setHidden] = useState(false);
+  const [hidden, setHidden] = useViewState("files.hidden", false);
   const [preview, setPreview] = useState<{ name: string; text: string } | null>(null);
   const [pendingUpload, setPendingUpload] = useState<File[] | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -68,9 +70,14 @@ export default function FilesPage() {
     retry: false,
   });
 
+  // The server resolves an empty path to the home directory. The address follows it, so the
+  // directory you were in is the one a return lands in.
   useEffect(() => {
-    if (listing.data && listing.data.path !== path) setPath(listing.data.path);
-  }, [listing.data, path]);
+    if (!listing.data || listing.data.path === path) return;
+    setPath(listing.data.path);
+    params.set("path", listing.data.path);
+    setParams(params, { replace: true });
+  }, [listing.data, path, params, setParams]);
 
   const entries = listing.data?.entries;
   const rows = useMemo<Row[]>(() => {
@@ -78,21 +85,52 @@ export default function FilesPage() {
     return path !== "/" && path !== "" ? [{ kind: "up" }, ...list] : list;
   }, [entries, path]);
 
+  // How far down the listing you were, kept for that one directory: a long /var/log is read
+  // from where you left it, and any other directory still opens at its top. The row heights
+  // measured so far go with the offset — folders and files are not the same height, so the
+  // offset alone, laid over estimated rows, lands a few rows off.
+  const views = useViewStore();
+  const place = JSON.stringify([alias, path, hidden]);
+  const [kept] = useState(() => {
+    const held = views.get<{ place: string; offset: number; measured: VirtualItem[] }>("files.scroll");
+    return held?.place === place ? held : { place, offset: 0, measured: [] };
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 35,
     overscan: 12,
+    initialOffset: kept.offset,
+    initialMeasurementsCache: kept.measured,
     measureElement: (el) => el.getBoundingClientRect().height,
   });
   const items = virtualizer.getVirtualItems();
   const padTop = items.length ? items[0].start : 0;
   const padBottom = items.length ? virtualizer.getTotalSize() - items[items.length - 1].end : 0;
 
-  useEffect(() => {
-    virtualizer.scrollToOffset(0); // a new directory starts at its top, not where the last one was
-  }, [alias, path, hidden, virtualizer]);
+  // Where the list should be once it is drawn: where you left it, on a return; the top, for a
+  // directory just opened — not where the last one was. Either has to wait for rows: the
+  // virtualizer draws none until it has measured its box, the browser clamps an offset set on a
+  // table that is only its header to 0, and a directory that had to load arrives in a new
+  // element, which the virtualizer scrolls straight back to the offset it remembers.
+  const target = useRef<number | null>(kept.offset);
+  const shownPlace = useRef(place);
+  useLayoutEffect(() => {
+    if (shownPlace.current !== place) {
+      shownPlace.current = place;
+      target.current = 0;
+    }
+    const element = scrollRef.current;
+    if (target.current === null || !element || !items.length) return;
+    element.scrollTop = target.current;
+    target.current = null;
+  }, [place, items.length, entries]);
+  // Written once, on the way out: scrolling does not need to pay for it.
+  useEffect(
+    () => () => views.set("files.scroll", { place: shownPlace.current, offset: virtualizer.scrollOffset ?? 0, measured: virtualizer.takeSnapshot() }),
+    [views, virtualizer],
+  );
 
   const selectHost = (next: string | null) => {
     if (!next) return;

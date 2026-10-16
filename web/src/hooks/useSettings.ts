@@ -2,7 +2,8 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../api/client";
-import type { HostSettings, Settings } from "../api/types";
+import type { HostSettings, PausedBy, Settings } from "../api/types";
+import { pauseTargetLabel } from "../lib/pause";
 
 export function useSettings() {
   return useQuery<Settings>({ queryKey: ["settings"], queryFn: api.settings.get, staleTime: 15_000 });
@@ -22,19 +23,28 @@ export function useInvalidateSettings() {
   };
 }
 
-/** Stop or resume monitoring of one host. Pausing also closes the connection the server holds. */
-export function usePauseHost() {
+/** Stop or resume monitoring of one host, one environment or a whole project. Pausing also
+ *  closes every connection the server holds to the hosts it covers. */
+export function usePause() {
   const invalidate = useInvalidateSettings();
   return useMutation({
-    mutationFn: ({ host, paused }: { host: { alias: string }; paused: boolean }) =>
-      api.settings.updateHost(host.alias, { paused }),
-    onSuccess: (_, { host, paused }) => {
+    mutationFn: async ({ target, paused }: { target: PausedBy; paused: boolean }): Promise<void> => {
+      if (target.kind === "project") await api.settings.updateProject(target.name, { paused });
+      else if (target.kind === "environment") await api.settings.updateEnvironment(target.name, { paused });
+      else await api.settings.updateHost(target.name, { paused });
+    },
+    onSuccess: (_, { target, paused }) => {
       invalidate();
+      const one = target.kind === "host";
       notifications.show({
-        title: paused ? `${host.alias} paused` : `${host.alias} resumed`,
+        title: `${pauseTargetLabel(target)} ${paused ? "paused" : "resumed"}`,
         message: paused
-          ? "Its connection is closed and sshfleet will not connect to it until you resume it."
-          : "Checking it now.",
+          ? one
+            ? "Its connection is closed and sshfleet will not connect to it until you resume it."
+            : "Every connection to its hosts is closed and sshfleet will not connect to them until you resume it."
+          : one
+            ? "Checking it now."
+            : "Checking its hosts now.",
         color: paused ? "orange" : "teal",
       });
     },

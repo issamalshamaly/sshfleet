@@ -30,7 +30,6 @@ import {
   IconPlugConnected,
   IconPlus,
   IconStarFilled,
-  IconSearch,
   IconTrash,
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
@@ -40,8 +39,10 @@ import { api } from "../../api/client";
 import type { HostSettings, Settings } from "../../api/types";
 import { useConfig } from "../../hooks/useFleet";
 import { useInvalidateSettings, renderStanza, useSettingsHosts } from "../../hooks/useSettings";
+import { pauseReason } from "../../lib/pause";
 import { useEnv } from "../../state/env";
-import { EmptyState, EnvBadge } from "../common";
+import { usePageLimit, useViewState } from "../../state/views";
+import { EmptyState, EnvBadge, SearchInput } from "../common";
 
 interface FormState {
   env: string;
@@ -358,9 +359,11 @@ function HostModal({
               )
             }
             description={
-              editing.paused_by && editing.paused_by !== editing.alias
-                ? `Already out of reach: it connects through ${editing.paused_by}, which is paused.`
-                : "sshfleet closes its connection and makes no new one — no checks, shells, logs or files — until this is turned off."
+              editing.paused_by?.kind === "host" && editing.paused_by.name !== editing.alias
+                ? `Already out of reach: it connects through ${editing.paused_by.name}, which is paused.`
+                : editing.paused_by && editing.paused_by.kind !== "host"
+                  ? `Already out of reach: ${editing.paused_by.kind} ${editing.paused_by.name} is paused. This switch is the host's own and stays as you leave it when that one is resumed.`
+                  : "sshfleet closes its connection and makes no new one — no checks, shells, logs or files — until this is turned off."
             }
             checked={form.paused}
             onChange={(e) => set("paused", e.currentTarget.checked)}
@@ -537,7 +540,7 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
   const config = useConfig();
   const invalidate = useInvalidateSettings();
   const { env: sidebarEnv, envNames, project } = useEnv();
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useViewState("settings.hosts.filter", "");
   const env = sidebarEnv ?? "";
   const [modal, setModal] = useState<{ open: boolean; editing: HostSettings | null }>({ open: false, editing: null });
   const [removing, setRemoving] = useState<HostSettings | null>(null);
@@ -590,13 +593,11 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
     });
   }, [hosts.data, filter, env, envNames]);
 
-  // A fleet of any size makes this table taller than the screen many times over.
-  const [limit, setLimit] = useState(PAGE);
+  // A fleet of any size makes this table taller than the screen many times over. A new filter
+  // is a new question, answered from the top.
+  const [limit, setLimit] = usePageLimit("settings.hosts.limit", JSON.stringify([filter, env, project]), PAGE);
   const rows = all.slice(0, limit);
   const more = all.length - rows.length;
-  useEffect(() => {
-    setLimit(PAGE); // a new filter is a new question, answered from the top
-  }, [filter, env, project]);
 
   return (
     <Stack gap="md">
@@ -611,13 +612,7 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
       </Group>
 
       <Group gap="sm">
-        <TextInput
-          placeholder="Filter by alias, address, user or service…"
-          leftSection={<IconSearch size={15} />}
-          value={filter}
-          onChange={(e) => setFilter(e.currentTarget.value)}
-          w={340}
-        />
+        <SearchInput placeholder="Filter by alias, address, user or service…" value={filter} onChange={setFilter} w={340} />
         {/* No environment picker here: the sidebar is the one in the app, and two controls for
             the same thing disagreed with each other. The Env column says which is which. */}
         <Text size="sm" c="dimmed">
@@ -652,7 +647,7 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
                           {host.alias}
                         </Text>
                         {host.paused_by && (
-                          <Tooltip label={host.paused_by === host.alias ? "Monitoring paused" : `Paused through ${host.paused_by}`}>
+                          <Tooltip label={pauseReason(host)} multiline maw={300}>
                             <Badge size="xs" variant="light" color="orange">
                               paused
                             </Badge>

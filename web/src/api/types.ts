@@ -10,15 +10,26 @@ export interface Environment {
   hosts: number;
   bastions: string[];
   production: boolean;
+  /** Monitoring stopped for every host in it (its own flag; its project's is on the project). */
+  paused: boolean;
 }
 
 /** A named grouping of environments, and the outermost thing sshfleet knows about. Every
- *  environment belongs to exactly one. It carries no behaviour; nothing about how a host is
- *  reached or watched comes from here. */
+ *  environment belongs to exactly one. Its one behaviour is pausing: nothing about how a host
+ *  is reached comes from here. */
 export interface Project {
   name: string;
   color: string;
   description: string;
+  /** Monitoring stopped for every host of every environment in it. */
+  paused: boolean;
+}
+
+/** What keeps sshfleet from connecting to a host: a paused host (itself, or a jump host on its
+ *  way), its paused environment, or its paused project — the widest one when several are. */
+export interface PausedBy {
+  kind: "host" | "environment" | "project";
+  name: string;
 }
 
 export interface ProjectSettings extends Project {
@@ -137,8 +148,8 @@ export interface Host {
   age_s: number | null;
   /** Its ssh master is open. */
   connected: boolean;
-  /** Monitoring is stopped: by this host itself, or by the jump host named here. */
-  paused_by: string | null;
+  /** Monitoring is stopped, and what stopped it. */
+  paused_by: PausedBy | null;
 }
 
 export interface Fleet {
@@ -206,6 +217,8 @@ export interface EnvironmentSettings {
   hosts: number;
   production: boolean;
   project: string;
+  /** Its own pause flag; its project's is on the project. */
+  paused: boolean;
 }
 
 export interface RefreshSettings {
@@ -257,8 +270,8 @@ export interface HostSettings {
   connect_timeout_s: number | null;
   /** Monitoring stopped on this host itself. */
   paused: boolean;
-  /** The paused host keeping this one out of reach: itself, or a jump host on its way. */
-  paused_by: string | null;
+  /** What keeps this one out of reach, when something does. */
+  paused_by: PausedBy | null;
 }
 
 export interface SshConfigCandidate {

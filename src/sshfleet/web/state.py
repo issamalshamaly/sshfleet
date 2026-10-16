@@ -20,7 +20,7 @@ from ..config import ConfigError
 from ..config import loader as config_loader
 from ..context import Context
 from ..fleet import FleetService
-from ..inventory import EnvScope, build_inventory, included_files
+from ..inventory import EnvScope, PausedBy, build_inventory, included_files
 from ..tunnels import TunnelManager, TunnelWatcher
 
 QUEUE_SIZE = 2000
@@ -296,9 +296,10 @@ class WebState:
             self._previous_alerts.pop(alias, None)
 
         # Pausing takes effect here, whether it came from the page or from a hand edit of
-        # config.yaml: what is open to the host is closed now, not at its next check.
+        # config.yaml: what is open to the host is closed now, not at its next check. A host that
+        # has only just appeared (added to a paused environment) has nothing open to close.
         paused_after = _paused(inventory)
-        newly_paused = sorted(paused_after - paused_before)
+        newly_paused = sorted((paused_after - paused_before) & set(before))
         resumed = sorted((paused_before - paused_after) & set(after))
         if newly_paused:
             await self._disconnect(newly_paused)
@@ -339,13 +340,12 @@ class WebState:
             self.fleet.forget(alias)
             for alert in self._previous_alerts.pop(alias, []):
                 self.events.publish({"type": "alert", "state": "cleared", "alert": alert_payload(alert)})
-            by = context.inventory.paused_by(alias)
             context.audit.append(
                 "host.pause",
                 env=context.inventory.host(alias).env,
                 host=alias,
                 status="ok",
-                note="connection closed" if by == alias else f"connection closed; reached through paused {by}",
+                note=_pause_note(context.inventory.paused_by(alias), alias),
             )
         self.fleet.save()
 
@@ -389,8 +389,9 @@ class WebState:
             "age_s": round(age, 1) if age is not None else None,
             # Its own ssh master is open, so views can count connections for what they show.
             "connected": alias in self.context.mux.alive,
-            # The paused host that keeps this one out of reach: itself, or a jump host on its way.
-            "paused_by": self.context.inventory.paused_by(alias),
+            # What keeps this one out of reach: its project, its environment, itself, or a jump
+            # host on its way — {"kind", "name"}, or None while it is watched.
+            "paused_by": _paused_by_payload(self.context.inventory, alias),
         }
 
     def fleet_payload(self, env: str | None = None) -> dict[str, Any]:
@@ -418,6 +419,7 @@ class WebState:
                     "hosts": len(environment.hosts),
                     "bastions": environment.bastions,
                     "production": "prod" in environment.name.lower(),
+                    "paused": cfg.paused,  # its own flag; its project's is on the project
                 }
             )
         return out
@@ -435,8 +437,22 @@ class WebState:
 
 
 def _paused(inventory) -> set[str]:
-    """Every alias sshfleet may not connect to: paused itself, or behind a paused jump host."""
+    """Every alias sshfleet may not connect to: paused itself, in a paused environment or
+    project, or behind a paused jump host."""
     return {h.alias for h in inventory.hosts() if inventory.paused_by(h.alias) is not None}
+
+
+def _paused_by_payload(inventory, alias: str) -> dict[str, str] | None:
+    by = inventory.paused_by(alias)
+    return by.to_dict() if by is not None else None
+
+
+def _pause_note(by: PausedBy | None, alias: str) -> str:
+    if by is None or (by.kind == "host" and by.name == alias):
+        return "connection closed"
+    if by.kind == "host":
+        return f"connection closed; reached through paused {by.name}"
+    return f"connection closed; {by.kind} {by.name} paused"
 
 
 def alert_payload(alert) -> dict[str, Any]:

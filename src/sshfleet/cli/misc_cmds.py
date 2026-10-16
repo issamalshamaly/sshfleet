@@ -104,7 +104,10 @@ def ssh(
     if paused is not None and not print_only:
         from .output import fail
 
-        fail(f"{alias}: {paused} (resume it in Settings › Hosts)")
+        # Environments are paused and resumed inside their project's panel.
+        held = context.inventory.paused_by(alias)
+        where = "Settings › Hosts" if held is not None and held.kind == "host" else "Settings › Projects"
+        fail(f"{alias}: {paused} (resume it in {where})")
         raise typer.Exit(Exit.USAGE)
 
     mode = "print" if print_only else shell_module.detect_mode(

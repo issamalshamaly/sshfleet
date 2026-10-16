@@ -22,6 +22,8 @@ import {
   IconAlertTriangle,
   IconChevronRight,
   IconPencil,
+  IconPlayerPause,
+  IconPlayerPlay,
   IconPlugConnected,
   IconPlus,
   IconTrash,
@@ -29,8 +31,8 @@ import {
 import { useEffect, useState } from "react";
 
 import { api } from "../../api/client";
-import type { ConnectionTest, EnvironmentSettings, ProjectSettings, Settings } from "../../api/types";
-import { useInvalidateSettings } from "../../hooks/useSettings";
+import type { ConnectionTest, EnvironmentSettings, PausedBy, ProjectSettings, Settings } from "../../api/types";
+import { useInvalidateSettings, usePause } from "../../hooks/useSettings";
 import { envColor } from "../../theme";
 import { EmptyState } from "../common";
 import { EnvironmentModal, KeyBadge, TestResult } from "./environments";
@@ -81,8 +83,8 @@ export function ProjectModal({
     <Modal opened={opened} onClose={onClose} title={editing ? `Edit ${editing.name}` : "Add a project"} centered>
       <Stack gap="sm">
         <Text size="sm" c="dimmed">
-          Every environment belongs to a project — typically one per system you run. It is grouping only: nothing about how a host is
-          reached or what is watched on it comes from here.
+          Every environment belongs to a project — typically one per system you run. Apart from pausing it, which stops sshfleet
+          connecting to every host in it, it is grouping only: nothing about how a host is reached comes from here.
         </Text>
         <TextInput label="Name" placeholder="acme" value={name} onChange={(e) => setName(e.currentTarget.value)} data-autofocus />
         <Select
@@ -135,6 +137,12 @@ function ProjectDrawer({
   const invalidate = useInvalidateSettings();
   const [tests, setTests] = useState<Record<string, ConnectionTest>>({});
   const [confirmRemove, setConfirmRemove] = useState<EnvironmentSettings | null>(null);
+  // Pausing closes many connections at once — shells and tunnels included — so it is confirmed;
+  // resuming only lets sshfleet look again, so it is not.
+  const [confirmPause, setConfirmPause] = useState<{ target: PausedBy; hosts: number } | null>(null);
+  const setPaused = usePause();
+  const resuming = (target: PausedBy) =>
+    setPaused.isPending && setPaused.variables?.target.kind === target.kind && setPaused.variables?.target.name === target.name;
   const members = environments.filter((e) => e.project === project?.name);
 
   const test = useMutation({
@@ -182,10 +190,42 @@ function ProjectDrawer({
             <Text size="sm" c="dimmed">
               {members.length} {members.length === 1 ? "environment" : "environments"} · {project.hosts} hosts
             </Text>
-            <Button variant="subtle" size="compact-xs" leftSection={<IconPencil size={12} />} onClick={onEdit}>
-              Edit project
-            </Button>
+            <Group gap={4}>
+              {project.paused ? (
+                <Button
+                  variant="light"
+                  color="teal"
+                  size="compact-xs"
+                  leftSection={<IconPlayerPlay size={12} />}
+                  loading={resuming({ kind: "project", name: project.name })}
+                  onClick={() => setPaused.mutate({ target: { kind: "project", name: project.name }, paused: false })}
+                >
+                  Resume project
+                </Button>
+              ) : (
+                <Button
+                  variant="subtle"
+                  color="orange"
+                  size="compact-xs"
+                  leftSection={<IconPlayerPause size={12} />}
+                  disabled={project.hosts === 0}
+                  onClick={() => setConfirmPause({ target: { kind: "project", name: project.name }, hosts: project.hosts })}
+                >
+                  Pause project
+                </Button>
+              )}
+              <Button variant="subtle" size="compact-xs" leftSection={<IconPencil size={12} />} onClick={onEdit}>
+                Edit project
+              </Button>
+            </Group>
           </Group>
+
+          {project.paused && (
+            <Alert color="orange" variant="light" icon={<IconPlayerPause size={16} />} title="Monitoring paused">
+              sshfleet makes no connection to any host in this project — no checks, shells, logs, files or tunnels — until it is
+              resumed. Each environment keeps its own pause switch for when it is.
+            </Alert>
+          )}
 
           <Divider />
 
@@ -221,6 +261,11 @@ function ProjectDrawer({
                       {environment.production && (
                         <Badge size="xs" color="red" variant="filled">
                           production
+                        </Badge>
+                      )}
+                      {(environment.paused || project.paused) && (
+                        <Badge size="xs" color="orange" variant="light" leftSection={<IconPlayerPause size={10} />}>
+                          {environment.paused ? "paused" : "paused with the project"}
                         </Badge>
                       )}
                     </Group>
@@ -277,16 +322,49 @@ function ProjectDrawer({
                   {tests[environment.name] && <TestResult result={tests[environment.name]} />}
 
                   <Group gap={4} mt="xs" justify="flex-end">
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      color="gray"
-                      leftSection={<IconPlugConnected size={13} />}
-                      loading={test.isPending && test.variables === environment.name}
-                      onClick={() => test.mutate(environment.name)}
-                    >
-                      Test
-                    </Button>
+                    {environment.paused ? (
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        color="teal"
+                        leftSection={<IconPlayerPlay size={13} />}
+                        loading={resuming({ kind: "environment", name: environment.name })}
+                        onClick={() => setPaused.mutate({ target: { kind: "environment", name: environment.name }, paused: false })}
+                      >
+                        Resume
+                      </Button>
+                    ) : (
+                      <Tooltip
+                        label="Stop monitoring every host in this environment: their connections are closed and sshfleet makes no new one until you resume it."
+                        multiline
+                        maw={300}
+                      >
+                        <Button
+                          size="compact-xs"
+                          variant="subtle"
+                          color="orange"
+                          leftSection={<IconPlayerPause size={13} />}
+                          disabled={environment.hosts === 0}
+                          onClick={() => setConfirmPause({ target: { kind: "environment", name: environment.name }, hosts: environment.hosts })}
+                        >
+                          Pause
+                        </Button>
+                      </Tooltip>
+                    )}
+                    {/* A test opens connections, which is exactly what a pause forbids. */}
+                    <Tooltip label="Paused — resume it to test the connection" disabled={!environment.paused && !project.paused}>
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        color="gray"
+                        leftSection={<IconPlugConnected size={13} />}
+                        loading={test.isPending && test.variables === environment.name}
+                        disabled={environment.paused || project.paused}
+                        onClick={() => test.mutate(environment.name)}
+                      >
+                        Test
+                      </Button>
+                    </Tooltip>
                     <Button size="compact-xs" variant="subtle" color="gray" leftSection={<IconPencil size={13} />} onClick={() => onEditEnvironment(environment)}>
                       Edit
                     </Button>
@@ -340,6 +418,41 @@ function ProjectDrawer({
               onClick={() => confirmRemove && removeEnvironment.mutate(confirmRemove.name)}
             >
               Remove
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={!!confirmPause}
+        onClose={() => setConfirmPause(null)}
+        title={confirmPause ? `Pause ${confirmPause.target.kind} ${confirmPause.target.name}?` : ""}
+        centered
+        zIndex={400}
+      >
+        <Stack gap="sm">
+          <Text size="sm">
+            sshfleet closes every connection it holds to the {confirmPause?.hosts} {confirmPause?.hosts === 1 ? "host" : "hosts"} in it —
+            open shells, log streams and tunnels through them end — and makes no new one until you resume it. Their alerts are dropped,
+            and they are counted apart on the fleet page.
+          </Text>
+          <Alert color="gray" variant="light">
+            Nothing changes on the servers: what runs there keeps running. Only sshfleet stops looking.
+          </Alert>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setConfirmPause(null)}>
+              Cancel
+            </Button>
+            <Button
+              color="orange"
+              leftSection={<IconPlayerPause size={15} />}
+              loading={setPaused.isPending}
+              onClick={() =>
+                confirmPause &&
+                setPaused.mutate({ target: confirmPause.target, paused: true }, { onSuccess: () => setConfirmPause(null) })
+              }
+            >
+              Pause
             </Button>
           </Group>
         </Stack>
@@ -413,8 +526,8 @@ export default function ProjectsTab({ settings }: { settings: Settings | undefin
       <Group justify="space-between" align="flex-start">
         <Text size="sm" c="dimmed" maw={640}>
           A project is the outermost thing sshfleet knows about — typically one per system you run, with its staging and production
-          inside it. Every environment belongs to exactly one. Grouping only: nothing about how a host is reached or what is watched on
-          it comes from a project.
+          inside it. Every environment belongs to exactly one. A project or an environment can be paused as a whole; otherwise it is
+          grouping only: nothing about how a host is reached comes from it.
         </Text>
         <Button leftSection={<IconPlus size={16} />} onClick={() => setModal({ open: true, editing: null })}>
           Add project
@@ -441,6 +554,11 @@ export default function ProjectsTab({ settings }: { settings: Settings | undefin
                     <Text fw={700} truncate>
                       {project.name}
                     </Text>
+                    {project.paused && (
+                      <Badge size="xs" color="orange" variant="light" leftSection={<IconPlayerPause size={10} />} style={{ flexShrink: 0 }}>
+                        paused
+                      </Badge>
+                    )}
                   </Group>
                   <IconChevronRight size={16} style={{ opacity: 0.5, flexShrink: 0 }} />
                 </Group>
@@ -454,7 +572,13 @@ export default function ProjectsTab({ settings }: { settings: Settings | undefin
                     project.environments.map((name) => {
                       const environment = environments.find((e) => e.name === name);
                       return (
-                        <Badge key={name} size="sm" variant="light" color={envColor(environment?.color ?? "gray")}>
+                        <Badge
+                          key={name}
+                          size="sm"
+                          variant="light"
+                          color={envColor(environment?.color ?? "gray")}
+                          leftSection={environment?.paused ? <IconPlayerPause size={10} /> : undefined}
+                        >
                           {name}
                         </Badge>
                       );

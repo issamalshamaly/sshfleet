@@ -15,7 +15,6 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
   Tooltip,
 } from "@mantine/core";
 import { DateTimePicker } from "@mantine/dates";
@@ -34,7 +33,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { LogSelection, LogSourceInfo } from "../api/types";
-import { EmptyState } from "../components/common";
+import { EmptyState, SearchInput } from "../components/common";
 import { useConfig } from "../hooks/useFleet";
 import { fmtBytes, fmtDateTime, fmtLogTime } from "../lib/format";
 import { useEnv } from "../state/env";
@@ -437,7 +436,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
               </Stack>
             ) : (
               <>
-                <TextInput size="xs" placeholder="Filter hosts…" value={hostFilter} onChange={(e) => setHostFilter(e.currentTarget.value)} />
+                <SearchInput size="xs" placeholder="Filter hosts…" value={hostFilter} onChange={setHostFilter} />
                 <ScrollArea h="min(360px, 34vh)" type="auto" scrollbars="y" offsetScrollbars>
                   <Stack gap={6} pb={6}>
                     {filteredHosts.map((h) => {
@@ -513,11 +512,14 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
         <Card withBorder padding="md" style={{ flexShrink: 0 }}>
           <Stack gap="sm">
             <Text fw={600}>Query</Text>
-            <TextInput
+            {/* The cross only: a stray Escape must not throw away a regex that took a while to write. */}
+            <SearchInput
               label="Pattern"
               placeholder={matchMode === "regex" ? "error|exception|timeout" : "exact text"}
               value={pattern}
-              onChange={(e) => setPattern(e.currentTarget.value)}
+              onChange={setPattern}
+              clearOnEscape={false}
+              leftSection={null}
               onKeyDown={(e) => e.key === "Enter" && void run()}
               className="mono"
               description="Leave empty to see everything in the window."

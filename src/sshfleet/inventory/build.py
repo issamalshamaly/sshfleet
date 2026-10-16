@@ -84,6 +84,7 @@ def build_environment(env_cfg: EnvironmentCfg, config: Config) -> Environment:
         short=env_cfg.short or env_cfg.name[:4],
         color=env_cfg.color,
         project=env_cfg.project,
+        paused=env_cfg.paused,
         hosts=hosts,
         bastions=bastions,
         alias_prefix=prefix,
@@ -98,7 +99,7 @@ def build_inventory(config: Config) -> Inventory:
     An environment whose file cannot be read comes back empty with a warning attached, so one
     deleted file costs that environment its hosts and nothing else its fleet.
     """
-    inventory = Inventory()
+    inventory = Inventory(paused_projects={p.name for p in config.projects if p.paused})
     for env_cfg in config.environments:
         try:
             environment = build_environment(env_cfg, config)
@@ -109,6 +110,7 @@ def build_inventory(config: Config) -> Inventory:
                 short=env_cfg.short or env_cfg.name[:4],
                 color=env_cfg.color,
                 project=env_cfg.project,
+                paused=env_cfg.paused,
                 key_path=env_cfg.key_path,
                 ssh_config_path=env_cfg.ssh_config_path,
             )

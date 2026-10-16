@@ -114,6 +114,8 @@ class Environment:
     color: str
     #: The project this environment is filed under, or None.
     project: str | None = None
+    #: Monitoring stopped for every host in it. See Inventory.paused_by.
+    paused: bool = False
     hosts: list[Host] = field(default_factory=list)
     bastions: list[str] = field(default_factory=list)
     alias_prefix: str | None = None
@@ -134,11 +136,25 @@ def in_scope(environment: Environment, env: EnvScope) -> bool:
     return environment.name in names or environment.short in names
 
 
+@dataclass(frozen=True, slots=True)
+class PausedBy:
+    """What keeps sshfleet from connecting to a host: a paused host (itself, or a jump host on its
+    way), a paused environment, or a paused project."""
+
+    kind: str  # host | environment | project
+    name: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"kind": self.kind, "name": self.name}
+
+
 @dataclass(slots=True)
 class Inventory:
     environments: list[Environment] = field(default_factory=list)
     by_alias: dict[str, Host] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)  # environments whose file could not be read
+    #: Projects whose monitoring is stopped: every host of every environment in them.
+    paused_projects: set[str] = field(default_factory=set)
 
     def hosts(self, env: EnvScope = None) -> list[Host]:
         return [h for e in self.environments if in_scope(e, env) for h in e.hosts]
@@ -173,24 +189,38 @@ class Inventory:
         """Hosts whose workload logs are in the default search (a paused one sits out)."""
         return [h for h in self.hosts(env) if h.main and self.paused_by(h.alias) is None]
 
-    def paused_by(self, alias: str) -> str | None:
-        """The paused host that keeps sshfleet from connecting to ``alias``: the host itself, or a
-        jump host on its way, since reaching it would open a connection through that one.
+    def paused_by(self, alias: str) -> PausedBy | None:
+        """What keeps sshfleet from connecting to ``alias``: its project, its environment or the
+        host itself — the widest first, since that is the one to resume first — and then the same
+        for each jump host on its way, since reaching it would open a connection through that one.
         None when nothing is paused on the way (or the alias is unknown)."""
         seen: set[str] = set()
         current = self.by_alias.get(alias)
         while current is not None and current.alias not in seen:
-            if current.paused:
-                return current.alias
+            if (held := self._held(current)) is not None:
+                return held
             seen.add(current.alias)
             current = self.by_alias.get(current.proxy_jump) if current.proxy_jump else None
         return None
+
+    def _held(self, host: Host) -> PausedBy | None:
+        environment = next((e for e in self.environments if e.name == host.env), None)
+        if environment is not None:
+            if environment.project and environment.project in self.paused_projects:
+                return PausedBy("project", environment.project)
+            if environment.paused:
+                return PausedBy("environment", environment.name)
+        return PausedBy("host", host.alias) if host.paused else None
 
     def paused_reason(self, alias: str) -> str | None:
         """Why sshfleet must not connect to ``alias``, or None when it may."""
         by = self.paused_by(alias)
         if by is None:
             return None
-        if by == alias:
+        if by.kind == "project":
+            return f"monitoring of project {by.name} is paused — sshfleet does not connect to its hosts"
+        if by.kind == "environment":
+            return f"monitoring of environment {by.name} is paused — sshfleet does not connect to its hosts"
+        if by.name == alias:
             return "monitoring is paused — sshfleet does not connect to it"
-        return f"it connects through {by}, whose monitoring is paused"
+        return f"it connects through {by.name}, whose monitoring is paused"

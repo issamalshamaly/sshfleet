@@ -27,6 +27,7 @@ import {
   IconFileText,
   IconFolders,
   IconHistory,
+  IconPlayerPause,
   IconRefresh,
   IconSearch,
   IconServer,
@@ -37,7 +38,7 @@ import {
   IconVolumeOff,
 } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "./api/client";
@@ -57,6 +58,7 @@ import { useFreshLogs } from "./lib/navigation";
 import { EnvProvider, useEnv } from "./state/env";
 import { LogsProvider } from "./state/logs";
 import { TerminalProvider, useTerminals } from "./state/terminals";
+import { useKeptScroll, useViewStore, ViewStateProvider } from "./state/views";
 import { TerminalDock } from "./components/TerminalDock";
 import { envColor } from "./theme";
 
@@ -79,6 +81,15 @@ function LogsRoute() {
   return <LogsPage key={fresh ? location.key : "kept"} fresh={fresh} />;
 }
 
+/** Beside a project's name wherever it is picked: nothing in it is being watched. */
+function ProjectPausedMark() {
+  return (
+    <Tooltip label="Paused — sshfleet makes no connection to any of its hosts">
+      <IconPlayerPause size={13} color="var(--mantine-color-orange-5)" style={{ flexShrink: 0 }} />
+    </Tooltip>
+  );
+}
+
 function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -88,6 +99,9 @@ function Shell() {
   const fleet = useFleet();
   const live = useFleetEvents();
   const queryClient = useQueryClient();
+  const views = useViewStore();
+  const main = useRef<HTMLElement>(null);
+  useKeptScroll(main);
   const sounds = config.data?.ui?.sounds;
   // Browsers gate audio behind a user gesture: the first click anywhere arms it for the session.
   useEffect(() => {
@@ -146,6 +160,8 @@ function Shell() {
     const hosts = all.filter((h) => !h.paused_by);
     const down = hosts.filter((h) => h.snapshot && !h.snapshot.reachable).length;
     const bastionsDown = environment.bastions.some((b) => fleet.data?.bastions[b] === false);
+    // Paused on its own or with its whole project: either way nothing in it is down, only unwatched.
+    const paused = environment.paused || !!currentProject?.paused;
     return (
       <NavLink
         key={environment.name}
@@ -158,7 +174,14 @@ function Shell() {
           </Group>
         }
         description={
-          bastionsDown ? (
+          paused ? (
+            <Group gap={4} wrap="nowrap">
+              <IconPlayerPause size={11} color="var(--mantine-color-orange-5)" />
+              <Text size="xs" c="orange.4">
+                paused · {all.length} {all.length === 1 ? "host" : "hosts"}
+              </Text>
+            </Group>
+          ) : bastionsDown ? (
             <Text size="xs" c="red.4">
               bastion unreachable
             </Text>
@@ -194,7 +217,7 @@ function Shell() {
         <Group h="100%" px="md" justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap">
             <Tooltip label="Back to the fleet">
-              <UnstyledButton onClick={() => navigate("/fleet")} aria-label="Back to the fleet">
+              <UnstyledButton onClick={() => navigate(views.resume("/fleet"))} aria-label="Back to the fleet">
                 <Text fw={700} size="lg" style={{ letterSpacing: -0.3 }}>
                   sshfleet
                 </Text>
@@ -336,6 +359,7 @@ function Shell() {
               <Text size="sm" fw={600} truncate>
                 {currentProject?.name ?? "No project"}
               </Text>
+              {currentProject?.paused && <ProjectPausedMark />}
             </Group>
           ) : (
           <Menu position="bottom-start" width={248} withinPortal>
@@ -359,6 +383,7 @@ function Shell() {
                     <Text size="sm" fw={600} truncate>
                       {currentProject?.name ?? "No project"}
                     </Text>
+                    {currentProject?.paused && <ProjectPausedMark />}
                   </Group>
                   <IconChevronDown size={14} style={{ opacity: 0.6, flexShrink: 0 }} />
                 </Group>
@@ -377,9 +402,12 @@ function Shell() {
                     item.name === project ? <IconCheck size={14} style={{ opacity: 0.7 }} /> : undefined
                   }
                 >
-                  <Text size="sm" truncate>
-                    {item.name}
-                  </Text>
+                  <Group gap={6} wrap="nowrap">
+                    <Text size="sm" truncate>
+                      {item.name}
+                    </Text>
+                    {item.paused && <ProjectPausedMark />}
+                  </Group>
                 </Menu.Item>
               ))}
               <Menu.Divider />
@@ -426,9 +454,10 @@ function Shell() {
                   label={item.label}
                   leftSection={<item.icon size={17} />}
                   active={here}
-                  // A view is a place you go back to: Logs comes back to the search that was
-                  // on it, results and all. Only a Logs icon beside a host starts a new one.
-                  onClick={() => navigate(item.to)}
+                  // A view is a place you go back to, at the address it was left on: the tab of
+                  // Settings, the directory in Files, the host open on the fleet. Logs comes
+                  // back to its search, results and all. Only an icon beside a host starts anew.
+                  onClick={() => navigate(views.resume(item.to))}
                   variant="light"
                 />
               );
@@ -451,7 +480,7 @@ function Shell() {
         </AppShell.Section>
       </AppShell.Navbar>
 
-      <AppShell.Main className="app-main" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "auto" }}>
+      <AppShell.Main ref={main} className="app-main" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "auto" }}>
         {/* This page came off disk; the routes answering it were imported when the server
             started. Say so, or the mismatch shows up as unrelated-looking failures. */}
         {config.data?.stale && (
@@ -508,7 +537,10 @@ export default function App() {
         {/* Outside the routes, both of them: a shell keeps running, and so does a log search —
             it, its results and the half-composed query all survive a trip to the fleet and back. */}
         <LogsProvider>
-          <Shell />
+          {/* And every other page's filters, tabs and place, for the same reason. */}
+          <ViewStateProvider>
+            <Shell />
+          </ViewStateProvider>
         </LogsProvider>
       </TerminalProvider>
     </EnvProvider>
