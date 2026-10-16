@@ -187,3 +187,13 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The page column. It scrolls, not the window, so each page's place can be kept (useKeptScroll).
+   dvh: on a phone the browser's own bars come and go, and 100vh would put the bottom under them. */
+.app-main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: auto;
+}

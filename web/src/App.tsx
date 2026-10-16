@@ -4,13 +4,14 @@ import {
   AppShell,
   Badge,
   Box,
+  Burger,
+  Drawer,
   Group,
   Menu,
   Indicator,
   Loader,
-  NavLink,
+  Progress,
   ScrollArea,
-  Stack,
   Text,
   Tooltip,
   UnstyledButton,
@@ -18,20 +19,11 @@ import {
 import { notifications } from "@mantine/notifications";
 import { Spotlight, spotlight, type SpotlightActionData } from "@mantine/spotlight";
 import {
-  IconActivity,
   IconAlertTriangle,
-  IconArrowsExchange,
   IconBell,
-  IconCheck,
-  IconChevronDown,
-  IconFileText,
-  IconFolders,
-  IconHistory,
-  IconPlayerPause,
   IconRefresh,
   IconSearch,
   IconServer,
-  IconSettings,
   IconTerminal2,
   IconX,
   IconVolume,
@@ -42,10 +34,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "./api/client";
-import type { Alert as FleetAlert, Environment } from "./api/types";
+import type { Alert as FleetAlert } from "./api/types";
 import { EnvBadge } from "./components/common";
 import { AlertsDrawer } from "./components/AlertsDrawer";
+import { EnvironmentList, NavFooter, ProjectPicker, ViewList } from "./components/shell/Navigation";
+import { MoreSheet, PhoneTabBar, WhereButton, WhereSheet } from "./components/shell/PhoneShell";
 import { useConfig, useFleet, useFleetEvents } from "./hooks/useFleet";
+import { useIsPhone, useTier, useVisualViewportVars } from "./lib/responsive";
 import { unlock } from "./lib/sounds";
 import AuditPage from "./pages/AuditPage";
 import FilesPage from "./pages/FilesPage";
@@ -60,16 +55,6 @@ import { LogsProvider } from "./state/logs";
 import { TerminalProvider, useTerminals } from "./state/terminals";
 import { useKeptScroll, useViewStore, ViewStateProvider } from "./state/views";
 import { TerminalDock } from "./components/TerminalDock";
-import { envColor } from "./theme";
-
-const NAV = [
-  { to: "/fleet", label: "Fleet", icon: IconServer },
-  { to: "/logs", label: "Logs", icon: IconFileText },
-  { to: "/files", label: "Files", icon: IconFolders },
-  { to: "/tunnels", label: "Tunnels", icon: IconArrowsExchange },
-  { to: "/audit", label: "Audit", icon: IconHistory },
-  { to: "/settings", label: "Settings", icon: IconSettings },
-];
 
 /** The Logs page keeps its query, its sources and its results between visits. Arriving from a
  *  Logs icon beside a host or a container is the exception — a new question — so that
@@ -81,19 +66,10 @@ function LogsRoute() {
   return <LogsPage key={fresh ? location.key : "kept"} fresh={fresh} />;
 }
 
-/** Beside a project's name wherever it is picked: nothing in it is being watched. */
-function ProjectPausedMark() {
-  return (
-    <Tooltip label="Paused — sshfleet makes no connection to any of its hosts">
-      <IconPlayerPause size={13} color="var(--mantine-color-orange-5)" style={{ flexShrink: 0 }} />
-    </Tooltip>
-  );
-}
-
 function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { env, setEnv, project, setProject, envNames, inScope } = useEnv();
+  const { env, project, inScope } = useEnv();
   const terminals = useTerminals();
   const config = useConfig();
   const fleet = useFleet();
@@ -102,6 +78,21 @@ function Shell() {
   const views = useViewStore();
   const main = useRef<HTMLElement>(null);
   useKeptScroll(main);
+  // Before the terminal route's early return: a full-page shell sizes itself from these too.
+  useVisualViewportVars();
+  const phone = useIsPhone();
+  const tier = useTier();
+  // The sidebar's stand-ins on narrower screens. They are passing panels, not places: moving to
+  // another page or another width closes them, so none is left open behind a layout it no longer
+  // belongs to.
+  const [navOpen, setNavOpen] = useState(false);
+  const [whereOpen, setWhereOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => {
+    setNavOpen(false);
+    setWhereOpen(false);
+    setMoreOpen(false);
+  }, [location.pathname, tier]);
   const sounds = config.data?.ui?.sounds;
   // Browsers gate audio behind a user gesture: the first click anywhere arms it for the session.
   useEffect(() => {
@@ -139,12 +130,6 @@ function Shell() {
   const critical = alerts.filter((a) => a.severity === "crit").length;
   const active = alerts.filter((a) => a.severity !== "info").length;
   const notes = alerts.length - active;
-  // A paused host holds no connection on purpose, so it is not one the count is missing.
-  const inView = useMemo(
-    () => (fleet.data?.hosts ?? []).filter((h) => inScope(h.env) && !h.paused_by),
-    [fleet.data, inScope],
-  );
-
   const actions: SpotlightActionData[] = useMemo(
     () =>
       (fleet.data?.hosts ?? []).map((host) => ({
@@ -157,60 +142,6 @@ function Shell() {
     [fleet.data, navigate],
   );
 
-  const currentProject = (config.data?.projects ?? []).find((p) => p.name === project) ?? null;
-  const projectEnvironments = useMemo(
-    () => (config.data?.environments ?? []).filter((e) => e.project === project),
-    [config.data, project],
-  );
-
-  const renderEnvironmentLink = (environment: Environment) => {
-    const all = fleet.data?.hosts.filter((h) => h.env === environment.name) ?? [];
-    // "down" is measured over the hosts being watched; a paused one is neither up nor down.
-    const hosts = all.filter((h) => !h.paused_by);
-    const down = hosts.filter((h) => h.snapshot && !h.snapshot.reachable).length;
-    const bastionsDown = environment.bastions.some((b) => fleet.data?.bastions[b] === false);
-    // Paused on its own or with its whole project: either way nothing in it is down, only unwatched.
-    const paused = environment.paused || !!currentProject?.paused;
-    return (
-      <NavLink
-        key={environment.name}
-        label={
-          <Group gap={8} wrap="nowrap">
-            <Box w={8} h={8} style={{ borderRadius: 4, background: `var(--mantine-color-${envColor(environment.color)}-6)` }} />
-            <Text size="sm" tt="capitalize">
-              {environment.name}
-            </Text>
-          </Group>
-        }
-        description={
-          paused ? (
-            <Group gap={4} wrap="nowrap">
-              <IconPlayerPause size={11} color="var(--mantine-color-orange-5)" />
-              <Text size="xs" c="orange.4">
-                paused · {all.length} {all.length === 1 ? "host" : "hosts"}
-              </Text>
-            </Group>
-          ) : bastionsDown ? (
-            <Text size="xs" c="red.4">
-              bastion unreachable
-            </Text>
-          ) : down ? (
-            <Text size="xs" c="yellow.4">
-              {down} of {hosts.length} down
-            </Text>
-          ) : (
-            <Text size="xs" c="dimmed">
-              {all.length} hosts
-            </Text>
-          )
-        }
-        active={env === environment.name}
-        onClick={() => setEnv(environment.name)}
-        variant="light"
-      />
-    );
-  };
-
   const isTerminal = location.pathname.startsWith("/terminal/");
   if (isTerminal) {
     return (
@@ -221,10 +152,24 @@ function Shell() {
   }
 
   return (
-    <AppShell navbar={{ width: 232, breakpoint: "sm" }} header={{ height: 52 }} padding="md">
-      <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between" wrap="nowrap">
-          <Group gap="sm" wrap="nowrap">
+    <AppShell
+      // Below md the sidebar does not fit beside a page: a tablet opens it from the burger, a
+      // phone has the tab bar and the header's environment button instead.
+      navbar={{ width: 232, breakpoint: "md", collapsed: { mobile: true } }}
+      header={{ height: 52 }}
+      padding={{ base: 12, sm: 16 }}
+    >
+      <AppShell.Header className="app-header">
+        <Group h="100%" px={{ base: "sm", sm: "md" }} justify="space-between" wrap="nowrap" gap="sm">
+          <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Burger
+              opened={navOpen}
+              onClick={() => setNavOpen((open) => !open)}
+              size="sm"
+              visibleFrom="sm"
+              hiddenFrom="md"
+              aria-label="Open the sidebar"
+            />
             <Tooltip label="Back to the fleet">
               <UnstyledButton onClick={() => navigate(views.resume("/fleet"))} aria-label="Back to the fleet">
                 <Text fw={700} size="lg" style={{ letterSpacing: -0.3 }}>
@@ -236,7 +181,7 @@ function Shell() {
               <span className={`live-dot ${live.connected ? "" : "off"}`} />
             </Tooltip>
             {live.progress && (
-              <Group gap={6}>
+              <Group gap={6} visibleFrom="sm">
                 <Loader size={12} color="teal" />
                 <Text size="xs" c="dimmed">
                   {live.progress.total ? `refreshing ${live.progress.done}/${live.progress.total}` : "refreshing…"}
@@ -244,16 +189,24 @@ function Shell() {
               </Group>
             )}
           </Group>
+          {phone ? (
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+              <WhereButton onClick={() => setWhereOpen(true)} />
+              <ActionIcon variant="default" size="lg" aria-label="Jump to a host" onClick={() => spotlight.open()}>
+                <IconSearch size={17} />
+              </ActionIcon>
+            </Group>
+          ) : (
           <Group gap="xs" wrap="nowrap">
             <UnstyledButton
               onClick={() => spotlight.open()}
               px="sm"
               py={6}
+              miw={{ base: 180, md: 260 }}
               style={{
                 border: "1px solid var(--mantine-color-dark-4)",
                 borderRadius: 8,
                 background: "var(--mantine-color-dark-7)",
-                minWidth: 260,
               }}
             >
               <Group gap={8} justify="space-between">
@@ -263,7 +216,7 @@ function Shell() {
                     Jump to a host…
                   </Text>
                 </Group>
-                <Badge variant="default" size="xs" radius="sm">
+                <Badge variant="default" size="xs" radius="sm" className="hover-only">
                   ⌘K
                 </Badge>
               </Group>
@@ -345,153 +298,63 @@ function Shell() {
               </Indicator>
             </Tooltip>
           </Group>
+          )}
         </Group>
+        {/* The phone has no room for "refreshing 3/16" in words; a hairline along the header says it. */}
+        {live.progress && (
+          <Progress
+            hiddenFrom="sm"
+            size={2}
+            radius={0}
+            color="teal"
+            value={live.progress.total ? (100 * live.progress.done) / live.progress.total : 100}
+            striped={!live.progress.total}
+            animated={!live.progress.total}
+            pos="absolute"
+            left={0}
+            right={0}
+            bottom={0}
+            aria-label="checking hosts"
+          />
+        )}
       </AppShell.Header>
 
-      <AppShell.Navbar p="sm">
+      <AppShell.Navbar p="sm" visibleFrom="md">
         <AppShell.Section>
-          {/* The fleet is organised project first, then the environments inside it, so the
-              sidebar reads the same way: pick the project, then look at all of it or at one
-              environment of it. */}
-          <Text size="xs" tt="uppercase" fw={700} c="dimmed" px="xs" mb={6} style={{ letterSpacing: 0.6 }}>
-            Project
-          </Text>
-          {(config.data?.projects ?? []).length < 2 ? (
-            <Group
-              gap={8}
-              wrap="nowrap"
-              style={{ padding: "8px 10px", borderRadius: 8, background: "var(--mantine-color-dark-6)" }}
-            >
-              <Box
-                w={9}
-                h={9}
-                style={{ borderRadius: 5, flexShrink: 0, background: `var(--mantine-color-${envColor(currentProject?.color ?? "gray")}-6)` }}
-              />
-              <Text size="sm" fw={600} truncate>
-                {currentProject?.name ?? "No project"}
-              </Text>
-              {currentProject?.paused && <ProjectPausedMark />}
-            </Group>
-          ) : (
-          <Menu position="bottom-start" width={248} withinPortal>
-            <Menu.Target>
-              <UnstyledButton
-                style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  background: "var(--mantine-color-dark-6)",
-                  border: "1px solid var(--mantine-color-dark-4)",
-                }}
-              >
-                <Group gap={8} wrap="nowrap" justify="space-between">
-                  <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                    <Box
-                      w={9}
-                      h={9}
-                      style={{ borderRadius: 5, flexShrink: 0, background: `var(--mantine-color-${envColor(currentProject?.color ?? "gray")}-6)` }}
-                    />
-                    <Text size="sm" fw={600} truncate>
-                      {currentProject?.name ?? "No project"}
-                    </Text>
-                    {currentProject?.paused && <ProjectPausedMark />}
-                  </Group>
-                  <IconChevronDown size={14} style={{ opacity: 0.6, flexShrink: 0 }} />
-                </Group>
-              </UnstyledButton>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Label>Projects</Menu.Label>
-              {(config.data?.projects ?? []).map((item) => (
-                <Menu.Item
-                  key={item.name}
-                  onClick={() => setProject(item.name)}
-                  leftSection={
-                    <Box w={9} h={9} style={{ borderRadius: 5, background: `var(--mantine-color-${envColor(item.color)}-6)` }} />
-                  }
-                  rightSection={
-                    item.name === project ? <IconCheck size={14} style={{ opacity: 0.7 }} /> : undefined
-                  }
-                >
-                  <Group gap={6} wrap="nowrap">
-                    <Text size="sm" truncate>
-                      {item.name}
-                    </Text>
-                    {item.paused && <ProjectPausedMark />}
-                  </Group>
-                </Menu.Item>
-              ))}
-              <Menu.Divider />
-              <Menu.Item leftSection={<IconSettings size={14} />} onClick={() => navigate("/settings?tab=projects")}>
-                Manage projects
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-          )}
-
-          {/* Choosing here only changes what is in view; it never navigates. This is the only
-              environment control in the app, so Settings depends on it to filter its own tables —
-              jumping to the fleet would take that away. */}
-          <Text size="xs" tt="uppercase" fw={700} c="dimmed" px="xs" mt="md" mb={6} style={{ letterSpacing: 0.6 }}>
-            Environments
-          </Text>
-          <Stack gap={2}>
-            <NavLink
-              label="All environments"
-              active={env === null}
-              onClick={() => setEnv(null)}
-              leftSection={<IconActivity size={16} />}
-              rightSection={
-                <Text size="xs" c="dimmed">
-                  {fleet.data ? fleet.data.hosts.filter((h) => envNames.includes(h.env)).length : "…"}
-                </Text>
-              }
-              variant="light"
-            />
-            {projectEnvironments.map(renderEnvironmentLink)}
-          </Stack>
+          <ProjectPicker />
+          <EnvironmentList />
         </AppShell.Section>
 
         <AppShell.Section grow component={ScrollArea} mt="md">
-          <Text size="xs" tt="uppercase" fw={700} c="dimmed" px="xs" mb={6} style={{ letterSpacing: 0.6 }}>
-            Views
-          </Text>
-          <Stack gap={2}>
-            {NAV.map((item) => {
-              const here = location.pathname.startsWith(item.to);
-              return (
-                <NavLink
-                  key={item.to}
-                  label={item.label}
-                  leftSection={<item.icon size={17} />}
-                  active={here}
-                  // A view is a place you go back to, at the address it was left on: the tab of
-                  // Settings, the directory in Files, the host open on the fleet. Logs comes
-                  // back to its search, results and all. Only an icon beside a host starts anew.
-                  onClick={() => navigate(views.resume(item.to))}
-                  variant="light"
-                />
-              );
-            })}
-          </Stack>
+          <ViewList />
         </AppShell.Section>
 
         <AppShell.Section>
-          <Group justify="space-between" px="xs" pt="sm" style={{ borderTop: "1px solid var(--mantine-color-dark-5)" }}>
-            <Group gap={6}>
-              <IconTerminal2 size={14} style={{ opacity: 0.6 }} />
-              <Text size="xs" c="dimmed">
-                connections {inView.filter((h) => h.connected).length}/{inView.length}
-              </Text>
-            </Group>
-            <Text size="xs" c="dimmed">
-              v{config.data?.version ?? ""}
-            </Text>
-          </Group>
+          <NavFooter />
         </AppShell.Section>
       </AppShell.Navbar>
 
-      <AppShell.Main ref={main} className="app-main" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "auto" }}>
+      {/* A tablet held upright: the same sidebar, opened from the burger over the page. */}
+      <Drawer
+        opened={navOpen}
+        onClose={() => setNavOpen(false)}
+        position="left"
+        size={280}
+        padding="sm"
+        title={<Text fw={700}>sshfleet</Text>}
+        className="responsive-overlay"
+      >
+        <ProjectPicker onPick={() => setNavOpen(false)} />
+        <EnvironmentList onPick={() => setNavOpen(false)} />
+        <Box mt="md">
+          <ViewList onPick={() => setNavOpen(false)} />
+        </Box>
+        <Box mt="md">
+          <NavFooter />
+        </Box>
+      </Drawer>
+
+      <AppShell.Main ref={main} className="app-main">
         {/* This page came off disk; the routes answering it were imported when the server
             started. Say so, or the mismatch shows up as unrelated-looking failures. */}
         {config.data?.stale && (
@@ -506,8 +369,9 @@ function Shell() {
             routes it does not have. Stop it and start it again — nothing is saved until you do.
           </Alert>
         )}
+        {/* A phone names the environment on the header's button already. */}
         {env && !location.pathname.startsWith("/settings") && (
-          <Group mb="sm" gap="xs">
+          <Group mb="sm" gap="xs" visibleFrom="sm">
             <Text size="sm" c="dimmed">
               Showing
             </Text>
@@ -533,10 +397,20 @@ function Shell() {
         shortcut={["mod + K", "/"]}
         searchProps={{ leftSection: <IconSearch size={18} />, placeholder: "Jump to a host by name, address or role…" }}
         limit={12}
+        fullScreen={phone}
       />
       <AlertsDrawer opened={alertsOpen} onClose={() => setAlertsOpen(false)} alerts={alerts} />
       {/* Outside the routes: a shell keeps running while you move between pages. */}
       <TerminalDock />
+      <PhoneTabBar
+        alerts={active}
+        critical={critical}
+        onAlerts={() => setAlertsOpen(true)}
+        onMore={() => setMoreOpen(true)}
+        moreOpen={moreOpen}
+      />
+      <WhereSheet opened={whereOpen} onClose={() => setWhereOpen(false)} />
+      <MoreSheet opened={moreOpen} onClose={() => setMoreOpen(false)} onToggleSounds={() => void toggleSounds()} />
     </AppShell>
   );
 }

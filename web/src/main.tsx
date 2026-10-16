@@ -15,6 +15,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import App from "./App";
+import { useIsPhone } from "./lib/responsive";
 import { theme } from "./theme";
 
 const queryClient = new QueryClient({
@@ -23,10 +24,16 @@ const queryClient = new QueryClient({
   },
 });
 
+/** On a phone a toast at the bottom right would sit on the tab bar, under the thumb. */
+function AppNotifications() {
+  const phone = useIsPhone();
+  return <Notifications position={phone ? "top-center" : "bottom-right"} limit={4} />;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="dark">
-      <Notifications position="bottom-right" limit={4} />
+      <AppNotifications />
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />

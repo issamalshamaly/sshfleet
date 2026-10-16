@@ -73,6 +73,22 @@ export function ResponsiveDrawer({ size, className, ...rest }: DrawerProps) {
   return <Drawer {...rest} size={phone ? "100%" : size} className={[className, "responsive-overlay"].filter(Boolean).join(" ")} />;
 }
 
+/** A panel that slides up from the bottom and is only as tall as what it holds, for a short list
+ *  of choices on a phone. */
+export function BottomSheet({ className, ...rest }: Omit<DrawerProps, "position" | "size" | "styles">) {
+  return (
+    <Drawer
+      {...rest}
+      position="bottom"
+      radius="lg"
+      className={[className, "bottom-sheet", "responsive-overlay"].filter(Boolean).join(" ")}
+      styles={{
+        content: { height: "auto", maxHeight: "calc(100dvh - 48px)", borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+      }}
+    />
+  );
+}
+
 /** A modal that is a full page on a phone. A short confirmation (`confirm`) stays a centred box:
  *  it reads better than a page with one sentence on it. */
 export function ResponsiveModal({ confirm, fullScreen, className, ...rest }: ModalProps & { confirm?: boolean }) {
