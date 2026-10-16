@@ -21,7 +21,7 @@ from ..config import ConfigError
 from ..config import loader as config_loader
 from ..context import Context
 from ..fleet import FleetService
-from ..history import History, StateRecord, tracked_files
+from ..history import History, StateRecord, apply_restore, plan_restore, tracked_files
 from ..inventory import EnvScope, PausedBy, build_inventory
 from ..tunnels import TunnelManager, TunnelWatcher
 
@@ -293,7 +293,9 @@ class WebState:
             finally:
                 self._config_owner = None
 
-    async def reload(self, *, reason: str = "manual", reload_config: bool = True, source: str = "web") -> dict[str, Any]:
+    async def reload(
+        self, *, reason: str = "manual", reload_config: bool = True, source: str = "web", restored_from: str | None = None
+    ) -> dict[str, Any]:
         """Re-read config.yaml and the SSH config files and swap in the new inventory.
 
         The Context object is mutated rather than replaced: the fleet service, tunnels and every
@@ -301,9 +303,11 @@ class WebState:
         broken edits included — those most of all, since they are the ones to go back from.
         """
         async with self.config_lock():
-            return await self._reload(reason=reason, reload_config=reload_config, source=source)
+            return await self._reload(reason=reason, reload_config=reload_config, source=source, restored_from=restored_from)
 
-    async def _reload(self, *, reason: str, reload_config: bool, source: str = "web") -> dict[str, Any]:
+    async def _reload(
+        self, *, reason: str, reload_config: bool, source: str = "web", restored_from: str | None = None
+    ) -> dict[str, Any]:
         context = self.context
         before = {h.alias: (h.hostname, h.user, h.port, h.proxy_jump, h.env) for h in context.inventory.hosts()}
         paused_before = _paused(context.inventory)
@@ -317,7 +321,7 @@ class WebState:
             self._fingerprints = self._fingerprint()
             message = str(exc)
             self.events.publish({"type": "error", "message": f"reload failed: {message}"})
-            state = await self.record_state(reason, source=source, valid=False, error=message)
+            state = await self.record_state(reason, source=source, valid=False, error=message, restored_from=restored_from)
             return {"ok": False, "error": message, "state": state.id if state else None}
 
         context.inventory = inventory
@@ -358,7 +362,7 @@ class WebState:
         self._fingerprints = self._fingerprint()
         self.last_reload = time.time()
         self.last_reload_reason = reason
-        state = await self.record_state(reason, source=source)
+        state = await self.record_state(reason, source=source, restored_from=restored_from)
         previous = self.history.previous(state.id) if state else None
         summary = {
             "ok": True,
@@ -380,6 +384,50 @@ class WebState:
             self.spawn(self.refresh(alias=alias))
         self.wake()
         return summary
+
+    @property
+    def config_busy(self) -> bool:
+        """A restore or an import is writing the configuration right now."""
+        return self._config_lock.locked()
+
+    async def restore(self, ref: str, *, only: set[str] | None = None) -> dict[str, Any]:
+        """Put an earlier state of the configuration back, as one step nothing else can interleave
+        with: checked first (see history.plan_restore), then the state before it recorded — so the
+        restore itself can be undone — then the files written, then reloaded and recorded again.
+        Raises HistoryError for an unknown state, RestoreRefused for one that would not load."""
+        async with self.config_lock():
+            files_now = tracked_files(self.context.config, self.context.paths)
+            plan = await asyncio.to_thread(plan_restore, self.history, ref, files_now, only=only)
+            target = plan.target
+            before = await self.record_state(f"before restoring {target.code}", source="restore")
+            written: list[str] = []
+            summary: dict[str, Any] | None = None
+            if plan.writes:
+                written = await asyncio.to_thread(apply_restore, plan, self.context.paths)
+                summary = await self.reload(
+                    reason=f"restored the state of {target.at[:16].replace('T', ' ')} ({target.code})",
+                    source="restore",
+                    restored_from=target.id,
+                )
+            after = self.history.latest()
+            self.context.audit.append(
+                "config.restore",
+                target=target.id,
+                status="ok" if summary is None or summary.get("ok") else "failed",
+                note=f"{len(written)} file(s) written; before {before.id if before else '?'}, after {after.id if after else '?'}",
+            )
+            return {
+                "ok": summary is None or bool(summary.get("ok")),
+                "target": target.id,
+                "before": before.id if before else None,
+                "after": after.id if after else None,
+                "written": written,
+                "unchanged": plan.unchanged,
+                "left_in_place": plan.left_in_place,
+                "unavailable": plan.unavailable,
+                "migrated": plan.migrated,
+                "reload": summary,
+            }
 
     async def _disconnect(self, aliases: list[str]) -> None:
         """Close everything open to hosts whose monitoring was just paused, and forget them.

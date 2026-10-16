@@ -1,6 +1,6 @@
 """HTTP and WebSocket routes."""
 
-from . import containers, files, fleet, logs, misc, settings, terminal, tunnels
+from . import containers, files, fleet, history, logs, misc, settings, terminal, tunnels
 
 ROUTERS = [
     fleet.router,
@@ -11,6 +11,7 @@ ROUTERS = [
     logs.router,
     logs.downloads,
     settings.router,
+    history.router,
     misc.router,
     terminal.router,
 ]

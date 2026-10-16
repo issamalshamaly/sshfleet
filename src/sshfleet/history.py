@@ -19,6 +19,7 @@ writes happen under an ``flock``.
 from __future__ import annotations
 
 import contextlib
+import difflib
 import fcntl
 import hashlib
 import json
@@ -32,11 +33,13 @@ from typing import Any
 import yaml
 
 from . import __version__
-from .config.schema import Config
+from .config import migrate
+from .config.loader import parse_text
+from .config.schema import CONFIG_VERSION, Config, ConfigError
 from .fsutil import atomic_write
 from .inventory import included_files
 from .inventory.sshconfig import holds_key_material, looks_like_key
-from .inventory.sshedit import aliases_in
+from .inventory.sshedit import aliases_in, replace_file
 from .paths import Paths
 
 ROLE_CONFIG = "config"
@@ -56,6 +59,10 @@ _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
 class HistoryError(Exception):
     """A state that does not exist, or a history that cannot be read."""
+
+
+class RestoreRefused(Exception):
+    """Putting this state back would leave a configuration that does not load; nothing was written."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,6 +294,18 @@ class History:
             raise HistoryError(f"no such state: {state_id}")
         return self._load(state_id)
 
+    def resolve(self, ref: str) -> StateRecord:
+        """A state named by its id, the six characters of its code, or an unambiguous id prefix."""
+        ref = (ref or "").strip()
+        if STATE_ID_RE.match(ref):
+            return self.get(ref)
+        matches = [i for i in self._ids() if i.endswith(f"-{ref}") or (len(ref) >= 8 and i.startswith(ref))]
+        if not matches:
+            raise HistoryError(f"no state matches {ref!r}")
+        if len(matches) > 1:
+            raise HistoryError(f"{ref!r} matches {len(matches)} states; give the full id (one of {', '.join(matches[-3:])}…)")
+        return self._load(matches[0])
+
     def previous(self, state_id: str) -> StateRecord | None:
         ids = self._ids()
         earlier = [i for i in ids if i < state_id]
@@ -395,6 +414,197 @@ class History:
             if _SHA_RE.match(blob.name) and blob.name not in referenced:
                 blob.unlink(missing_ok=True)
         return len(drop)
+
+
+# ---------------------------------------------------------------------------- comparing
+
+
+@dataclass(slots=True)
+class FileDiff:
+    path: str
+    role: str
+    #: "changed", "same", "added" (only in the newer side), "removed" (only in the older side),
+    #: or "unavailable" (its content was not kept on one side: missing, skipped, too large).
+    change: str
+    diff: str = ""
+    note: str | None = None
+
+
+def _text(data: bytes | None) -> list[str]:
+    return [] if data is None else data.decode(errors="replace").splitlines(keepends=True)
+
+
+def _unified(path: str, old: bytes | None, new: bytes | None) -> str:
+    name = Path(path).name
+    return "".join(difflib.unified_diff(_text(old), _text(new), fromfile=f"a/{name}", tofile=f"b/{name}"))
+
+
+def _why_unavailable(entry: FileEntry) -> str:
+    return "missing when this state was recorded" if entry.missing else (entry.skipped or "not kept")
+
+
+def compare(
+    older: list[tuple[FileEntry, bytes | None]], newer: list[tuple[FileEntry, bytes | None]]
+) -> list[FileDiff]:
+    """File by file, what turns ``older`` into ``newer``."""
+    old_by_path = {entry.path: (entry, data) for entry, data in older}
+    out: list[FileDiff] = []
+    for entry, data in newer:
+        before = old_by_path.pop(entry.path, None)
+        if before is None:
+            out.append(FileDiff(entry.path, entry.role, "added", _unified(entry.path, None, data)))
+            continue
+        old_entry, old_data = before
+        if not entry.kept or not old_entry.kept:
+            if (old_entry.sha256, old_entry.missing, old_entry.skipped) == (entry.sha256, entry.missing, entry.skipped):
+                out.append(FileDiff(entry.path, entry.role, "same"))
+            else:
+                side = entry if not entry.kept else old_entry
+                out.append(FileDiff(entry.path, entry.role, "unavailable", note=_why_unavailable(side)))
+        elif old_entry.sha256 == entry.sha256:
+            out.append(FileDiff(entry.path, entry.role, "same"))
+        else:
+            out.append(FileDiff(entry.path, entry.role, "changed", _unified(entry.path, old_data, data)))
+    for old_entry, old_data in old_by_path.values():
+        out.append(FileDiff(old_entry.path, old_entry.role, "removed", _unified(old_entry.path, old_data, None)))
+    return out
+
+
+def with_content(history: History, state: StateRecord) -> list[tuple[FileEntry, bytes | None]]:
+    out: list[tuple[FileEntry, bytes | None]] = []
+    for entry in state.files:
+        try:
+            out.append((entry, history.content(entry)))
+        except HistoryError:
+            out.append((FileEntry(entry.role, entry.path, entry.env, None, entry.size, entry.mode, skipped="content lost"), None))
+    return out
+
+
+# ---------------------------------------------------------------------------- restoring
+
+
+@dataclass(slots=True)
+class FileWrite:
+    path: str
+    role: str
+    content: bytes = field(repr=False)
+
+
+@dataclass(slots=True)
+class RestorePlan:
+    target: StateRecord
+    writes: list[FileWrite]
+    unchanged: list[str]
+    #: Tracked now but not in the target state, typically a newer environment's file. Never deleted:
+    #: the target's config.yaml stops naming it, exactly as removing that environment would.
+    left_in_place: list[str]
+    #: In the target state but without its content (missing then, skipped, lost): left as it is now.
+    unavailable: list[dict[str, str]]
+    #: The target's config.yaml predates the current layout and was upgraded on the way back.
+    migrated: bool
+    diffs: list[FileDiff]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target": self.target.id,
+            "writes": [w.path for w in self.writes],
+            "unchanged": self.unchanged,
+            "left_in_place": self.left_in_place,
+            "unavailable": self.unavailable,
+            "migrated": self.migrated,
+            "diffs": [asdict(d) for d in self.diffs],
+        }
+
+
+def plan_restore(history: History, ref: str, files_now: list[TrackedFile], *, only: set[str] | None = None) -> RestorePlan:
+    """What putting a state back would write, checked to load before anything is written.
+
+    Only files whose content differs are written, and nothing is ever deleted. ``only`` limits the
+    restore to some of the target's files (by path); the config that results must still load.
+    """
+    target = history.resolve(ref)
+    now = read_files(files_now)
+    now_by_path = {entry.path: (entry, data) for entry, data in now}
+    target_files = with_content(history, target)
+    chosen = [(e, d) for e, d in target_files if only is None or e.path in only]
+    if only is not None and not chosen:
+        raise RestoreRefused(f"none of {', '.join(sorted(only))} is part of state {target.id}")
+
+    writes: list[FileWrite] = []
+    unchanged: list[str] = []
+    unavailable: list[dict[str, str]] = []
+    migrated = False
+    for entry, data in chosen:
+        current = now_by_path.get(entry.path)
+        if not entry.kept or data is None:
+            unavailable.append({"path": entry.path, "why": _why_unavailable(entry)})
+            continue
+        if entry.role == ROLE_CONFIG:
+            data, migrated = _config_to_write(data, target_files, target)
+        if current is not None and current[0].sha256 == hashlib.sha256(data).hexdigest():
+            unchanged.append(entry.path)
+        else:
+            writes.append(FileWrite(entry.path, entry.role, data))
+
+    # The configuration this leaves must load: the restored config.yaml, or the current one when
+    # it is not part of what is being put back.
+    config_after = next((w.content for w in writes if w.role == ROLE_CONFIG), None)
+    if config_after is None:
+        current_config = next((data for entry, data in now if entry.role == ROLE_CONFIG), None)
+        config_after = current_config
+    if config_after is not None:
+        try:
+            parse_text(config_after.decode(errors="replace"), source=f"config.yaml of state {target.id}")
+        except ConfigError as exc:
+            raise RestoreRefused(f"state {target.id} cannot be restored: {exc}") from exc
+
+    target_paths = {entry.path for entry in target.files}
+    left_in_place = [path for path in now_by_path if path not in target_paths] if only is None else []
+    newer = [(FileEntry(w.role, w.path, None, hashlib.sha256(w.content).hexdigest()), w.content) for w in writes]
+    older = [now_by_path[w.path] if w.path in now_by_path else (FileEntry(w.role, w.path, None, None, missing=True), None) for w in writes]
+    return RestorePlan(
+        target=target,
+        writes=writes,
+        unchanged=unchanged,
+        left_in_place=left_in_place,
+        unavailable=unavailable,
+        migrated=migrated,
+        diffs=compare(older, newer),
+    )
+
+
+def _config_to_write(data: bytes, files: list[tuple[FileEntry, bytes | None]], target: StateRecord) -> tuple[bytes, bool]:
+    """The target's config.yaml as it can be written today: byte for byte when it is already in the
+    current layout, upgraded otherwise — with the aliases read from the target's own SSH files,
+    since the files on disk now may not be the ones that config was written against."""
+    raw = _yaml(data)
+    if raw is None or migrate.file_version(raw) >= CONFIG_VERSION:
+        return data, False
+    aliases: dict[str, list[str]] = {}
+    for entry, content in files:
+        if entry.role == ROLE_SSH and entry.env and content is not None:
+            aliases.setdefault(entry.env, []).extend(sorted(_host_patterns(content)))
+    try:
+        upgraded = migrate.upgrade_mapping(raw, aliases)
+    except (ConfigError, ValueError, TypeError, KeyError) as exc:
+        raise RestoreRefused(f"state {target.id} holds a config.yaml too old to upgrade: {exc}") from exc
+    return yaml.safe_dump(upgraded, sort_keys=False, allow_unicode=True, width=100).encode(), True
+
+
+def apply_restore(plan: RestorePlan, paths: Paths) -> list[str]:
+    """Write what the plan says: SSH files first (each keeps its own backup), config.yaml last, so
+    a reader that sees the new config.yaml finds the files it names already in place."""
+    written: list[str] = []
+    for write in sorted(plan.writes, key=lambda w: w.role == ROLE_CONFIG):
+        path = Path(write.path)
+        if write.role == ROLE_CONFIG:
+            if path.exists():
+                atomic_write(path.with_suffix(path.suffix + ".bak"), path.read_bytes(), mode=0o600)
+            atomic_write(path, write.content, mode=0o600)
+        else:
+            replace_file(path, write.content, paths.ssh_backups)
+        written.append(write.path)
+    return written
 
 
 def record_now(config: Config, paths: Paths, *, reason: str, source: str, **extra: Any) -> tuple[StateRecord, bool]:

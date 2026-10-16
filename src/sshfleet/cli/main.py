@@ -11,6 +11,7 @@ import sys
 import typer
 
 from . import (
+    config_cmds,
     container_cmds,
     env_cmds,
     files_cmds,
@@ -34,6 +35,7 @@ app = typer.Typer(
 
 app.add_typer(project_cmds.app, name="project")
 app.add_typer(env_cmds.app, name="env")
+app.add_typer(config_cmds.app, name="config")
 app.add_typer(mux_cmds.app, name="mux")
 app.command("fleet")(fleet_cmds.fleet)
 app.command("host")(fleet_cmds.host)

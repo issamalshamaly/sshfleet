@@ -253,6 +253,11 @@ def write_lines(path: Path, lines: list[str], backups_dir: Path) -> Path | None:
     A file that does not exist yet is created (private, in a private directory) and there is
     nothing to back up, so None comes back.
     """
+    return replace_file(path, "".join(lines).encode(), backups_dir)
+
+
+def replace_file(path: Path, data: bytes, backups_dir: Path) -> Path | None:
+    """``write_lines`` for exact bytes — what a restore puts back, byte for byte."""
     backups_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     backup: Path | None = None
     if path.exists():
@@ -260,7 +265,7 @@ def write_lines(path: Path, lines: list[str], backups_dir: Path) -> Path | None:
         atomic_write(backup, path.read_bytes(), mode=0o600)
         _prune_backups(path, backups_dir)
     # Through a symlink to the real file, keeping its mode; a new file is private.
-    atomic_write(path, "".join(lines))
+    atomic_write(path, data)
     return backup
 
 
