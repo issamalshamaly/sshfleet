@@ -250,7 +250,7 @@ async def search(request: Request, body: SearchBody):
                     "bundle": bundle_path, "bundle_name": Path(bundle_path).name if bundle_path else None,
                 }) + "\n").encode()
 
-    return StreamingResponse(stream(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache"})
+    return StreamingResponse(state.until_shutdown(stream()), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache"})
 
 
 @router.post("/follow")
@@ -276,7 +276,7 @@ async def follow_logs(request: Request, body: FollowBody):
                 yield (json.dumps({"type": "source_error", "source": event.source_id, "label": event.label,
                                    "kind": event.kind, "message": event.message}) + "\n").encode()
 
-    return StreamingResponse(stream(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache"})
+    return StreamingResponse(state.until_shutdown(stream()), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/bundles")

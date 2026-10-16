@@ -11,7 +11,7 @@ import contextlib
 import secrets
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -106,6 +106,9 @@ class WebState:
         self._tunnel_task: asyncio.Task | None = None
         self._fingerprints: dict[str, tuple[float, int]] = {}
         self._wake = asyncio.Event()
+        #: Set when the server starts shutting down; see begin_shutdown.
+        self.closing = False
+        self._stream_waits: set[asyncio.Timeout] = set()
         self.last_reload: float = 0.0
         self.last_reload_reason: str = "startup"
         self.history = History(context.paths.history_dir)
@@ -138,6 +141,44 @@ class WebState:
             task.cancel()
         if self._background:
             await asyncio.gather(*self._background, return_exceptions=True)
+
+    def begin_shutdown(self) -> None:
+        """End every open stream now, before the server waits for open responses to finish.
+
+        uvicorn runs the app's own shutdown (``stop``) only once every response has finished,
+        and the page holds /api/events open for as long as it is open. A stream told to end
+        from ``stop`` is told too late: each Ctrl+C sat out the whole grace period, and then
+        uvicorn cancelled the stream and printed its traceback.
+        """
+        self.closing = True
+        now = asyncio.get_running_loop().time()
+        for wait in list(self._stream_waits):
+            wait.reschedule(now)
+
+    async def until_shutdown(self, stream: AsyncGenerator[bytes, None]) -> AsyncIterator[bytes]:
+        """``stream``, ended between two chunks once the server starts shutting down.
+
+        Only the wait for the next chunk is cut short, never a send, so the browser still gets a
+        complete response, and the source is cancelled the same way a browser leaving cancels it.
+        """
+        try:
+            while not self.closing:
+                try:
+                    async with asyncio.timeout(None) as wait:
+                        self._stream_waits.add(wait)
+                        try:
+                            chunk = await anext(stream, None)
+                        finally:
+                            self._stream_waits.discard(wait)
+                except TimeoutError:
+                    if wait.expired():
+                        return
+                    raise  # the source's own timeout, not ours
+                if chunk is None:
+                    return
+                yield chunk
+        finally:
+            await stream.aclose()
 
     async def _refresh_loop(self) -> None:
         # First pass right away so the page fills in; then on the configured interval, which the

@@ -129,4 +129,4 @@ async def events(request: Request):
         finally:
             state.events.unsubscribe(queue)
 
-    return StreamingResponse(stream(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache"})
+    return StreamingResponse(state.until_shutdown(stream()), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache"})

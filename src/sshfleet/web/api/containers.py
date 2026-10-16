@@ -244,7 +244,7 @@ async def job_stream(request: Request, job_id: str):
                 return
             await asyncio.sleep(0.2)
 
-    return StreamingResponse(stream(), media_type="application/x-ndjson")
+    return StreamingResponse(state.until_shutdown(stream()), media_type="application/x-ndjson")
 
 
 @router.get("/jobs/{job_id}")

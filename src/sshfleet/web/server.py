@@ -7,6 +7,7 @@ talk to the API without it.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import shutil
 import subprocess
@@ -88,8 +89,6 @@ def create_app(context: Context | None = None) -> FastAPI:
 
 
 def run_web(host: str = "127.0.0.1", port: int = 8765, *, open_browser: bool = True, context: Context | None = None) -> None:
-    import uvicorn
-
     app = create_app(context)
     url = f"http://{host}:{port}/"
     if open_browser:
@@ -98,16 +97,42 @@ def run_web(host: str = "127.0.0.1", port: int = 8765, *, open_browser: bool = T
 
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     print(f"sshfleet web interface: {url}")
-    uvicorn.run(app, host=host, port=port, log_level="warning", ws=WS_IMPLEMENTATION, timeout_graceful_shutdown=2)
+    server = make_server(app, host=host, port=port, log_level="warning", ws=WS_IMPLEMENTATION, timeout_graceful_shutdown=2)
+    # uvicorn.run cannot take our Server; this is what it does around Server.run.
+    with contextlib.suppress(KeyboardInterrupt):
+        server.run()
+    if not server.started:
+        raise SystemExit(3)
+
+
+def make_server(app: FastAPI, **config):
+    """A uvicorn server that ends the app's open streams the moment it starts shutting down.
+
+    See :meth:`WebState.begin_shutdown`: without it, uvicorn waits on those streams first.
+    """
+    import uvicorn
+
+    class Server(uvicorn.Server):
+        async def shutdown(self, sockets=None) -> None:
+            app.state.web.begin_shutdown()
+            await super().shutdown(sockets)
+            if self.force_exit:
+                # A second Ctrl+C makes uvicorn skip the app's shutdown, and asyncio.run then
+                # cancels the lifespan instead: the cleanup still runs, but the cancellation is
+                # reported as a failed shutdown, traceback and all. With the streams already
+                # ended there is nothing left to force, so shut down properly. Bounded, in case
+                # the cleanup itself is what hangs.
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self.lifespan.shutdown(), timeout=2)
+
+    return Server(uvicorn.Config(app, **config))
 
 
 def _start_background_server(port: int, context: Context | None):
     import threading
 
-    import uvicorn
-
     app = create_app(context)
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", ws=WS_IMPLEMENTATION))
+    server = make_server(app, host="127.0.0.1", port=port, log_level="warning", ws=WS_IMPLEMENTATION)
     thread = threading.Thread(target=server.run, daemon=True, name="sshfleet-web")
     thread.start()
     return server
