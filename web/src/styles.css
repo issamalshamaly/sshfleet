@@ -299,3 +299,10 @@ body {
 .log-viewer.stacked .log-line.continuation .log-ts {
   display: none;
 }
+
+/* The directory listing scrolls inside its card, so a long /var/log keeps the toolbar in view. */
+.files-scroll {
+  overflow-y: auto;
+  max-height: calc(100vh - 400px);
+  min-height: 220px;
+}

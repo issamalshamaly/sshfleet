@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Anchor,
   Badge,
+  Box,
   Breadcrumbs,
   Button,
   Card,
@@ -12,6 +13,7 @@ import {
   Modal,
   ScrollArea,
   Select,
+  SimpleGrid,
   Stack,
   Switch,
   Table,
@@ -30,8 +32,10 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { FileEntry } from "../api/types";
 import { EmptyState, EnvBadge } from "../components/common";
+import { BottomSheet, Field, InfoTip, ResponsiveModal } from "../components/responsive";
 import { useConfig, useFleet } from "../hooks/useFleet";
 import { fmtBytes, fmtDateTime } from "../lib/format";
+import { useIsCompact, useIsPhone, useNoHover } from "../lib/responsive";
 import { useEnv } from "../state/env";
 import { useViewState, useViewStore } from "../state/views";
 
@@ -58,6 +62,16 @@ export default function FilesPage() {
   const [preview, setPreview] = useState<{ name: string; text: string } | null>(null);
   const [pendingUpload, setPendingUpload] = useState<File[] | null>(null);
   const [uploading, setUploading] = useState(false);
+  // A phone has room for the name and one line under it, so a tap on a file opens its details
+  // and its buttons instead of a row of columns that do not fit.
+  const phone = useIsPhone();
+  const compact = useIsCompact();
+  const noHover = useNoHover();
+  // Rows that span the table (the parent link, the virtual list's spacers) must span only the
+  // columns shown: a fixed-layout table counts their span as columns and shares the width out.
+  const columns = phone ? 1 : compact ? 4 : 6;
+  const [opened, setOpened] = useState<FileEntry | null>(null);
+  const [previewWrap, setPreviewWrap] = useViewState("files.previewWrap", true);
 
   useEffect(() => {
     setPathInput(path);
@@ -91,9 +105,13 @@ export default function FilesPage() {
   // offset alone, laid over estimated rows, lands a few rows off.
   const views = useViewStore();
   const place = JSON.stringify([alias, path, hidden]);
+  // The measured heights belong to one layout: a phone's two-line rows are taller, so after a
+  // turn of the screen they would put the place several rows off. Only the offset carries over.
+  const tier = phone ? "phone" : "wide";
   const [kept] = useState(() => {
-    const held = views.get<{ place: string; offset: number; measured: VirtualItem[] }>("files.scroll");
-    return held?.place === place ? held : { place, offset: 0, measured: [] };
+    const held = views.get<{ place: string; offset: number; measured: VirtualItem[]; tier?: string }>("files.scroll");
+    if (held?.place !== place) return { place, offset: 0, measured: [] };
+    return held.tier === tier ? held : { ...held, measured: [] };
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -127,10 +145,25 @@ export default function FilesPage() {
     target.current = null;
   }, [place, items.length, entries]);
   // Written once, on the way out: scrolling does not need to pay for it.
+  const tierRef = useRef(tier);
+  tierRef.current = tier;
   useEffect(
-    () => () => views.set("files.scroll", { place: shownPlace.current, offset: virtualizer.scrollOffset ?? 0, measured: virtualizer.takeSnapshot() }),
+    () => () =>
+      views.set("files.scroll", {
+        place: shownPlace.current,
+        offset: virtualizer.scrollOffset ?? 0,
+        measured: virtualizer.takeSnapshot(),
+        tier: tierRef.current,
+      }),
     [views, virtualizer],
   );
+  // The same rows change height when the screen turns between phone and wider: measure again.
+  const measuredTier = useRef(tier);
+  useEffect(() => {
+    if (measuredTier.current === tier) return;
+    measuredTier.current = tier;
+    virtualizer.measure();
+  }, [tier, virtualizer]);
 
   const selectHost = (next: string | null) => {
     if (!next) return;
@@ -185,7 +218,7 @@ export default function FilesPage() {
         <Select
           label="Host"
           searchable
-          w={300}
+          w={{ base: "100%", sm: 300 }}
           data={hosts.map((h) => ({ value: h.alias, label: h.alias }))}
           value={alias}
           onChange={selectHost}
@@ -195,7 +228,7 @@ export default function FilesPage() {
         />
         <TextInput
           label="Path"
-          w={420}
+          w={{ base: "100%", md: 420 }}
           className="mono"
           value={pathInput}
           onChange={(e) => setPathInput(e.currentTarget.value)}
@@ -204,7 +237,7 @@ export default function FilesPage() {
         />
         <Switch label="Hidden files" checked={hidden} onChange={(e) => setHidden(e.currentTarget.checked)} mb={8} />
         <Tooltip label="Reload">
-          <ActionIcon variant="default" size="lg" mb={2} onClick={() => void listing.refetch()}>
+          <ActionIcon variant="default" size="lg" mb={2} aria-label="Reload" onClick={() => void listing.refetch()}>
             <IconRefresh size={16} />
           </ActionIcon>
         </Tooltip>
@@ -249,24 +282,30 @@ export default function FilesPage() {
           <EmptyState title="Empty directory" />
         ) : (
           <>
-            <div ref={scrollRef} style={{ overflowY: "auto", maxHeight: "calc(100vh - 400px)", minHeight: 220 }}>
+            <div ref={scrollRef} className="files-scroll">
               <Table highlightOnHover verticalSpacing={6} stickyHeader style={{ tableLayout: "fixed" }}>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Name</Table.Th>
-                    <Table.Th w={100} ta="right">
+                    <Table.Th w={100} ta="right" visibleFrom="sm">
                       Size
                     </Table.Th>
-                    <Table.Th w={170}>Modified</Table.Th>
-                    <Table.Th w={110}>Mode</Table.Th>
-                    <Table.Th w={150}>Owner</Table.Th>
-                    <Table.Th w={90} />
+                    <Table.Th w={170} visibleFrom="sm">
+                      Modified
+                    </Table.Th>
+                    <Table.Th w={110} visibleFrom="md">
+                      Mode
+                    </Table.Th>
+                    <Table.Th w={150} visibleFrom="md">
+                      Owner
+                    </Table.Th>
+                    <Table.Th w={90} visibleFrom="sm" />
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {padTop > 0 && (
                     <Table.Tr style={{ height: padTop }}>
-                      <Table.Td colSpan={6} p={0} style={{ border: "none" }} />
+                      <Table.Td colSpan={columns} p={0} style={{ border: "none" }} />
                     </Table.Tr>
                   )}
                   {items.map((item) => {
@@ -280,7 +319,7 @@ export default function FilesPage() {
                           className="host-row"
                           onClick={() => go(path.replace(/\/[^/]+\/?$/, "") || "/")}
                         >
-                          <Table.Td colSpan={6}>
+                          <Table.Td colSpan={columns}>
                             <Group gap={8}>
                               <IconFolder size={16} style={{ opacity: 0.7 }} />
                               <Text size="sm" className="mono" c="dimmed">
@@ -294,68 +333,87 @@ export default function FilesPage() {
                     const entry = row.entry;
                     const isDir = entry.kind === "d";
                     const denied = !!entry.denied;
+                    const name = (
+                      <Text size="sm" className="mono" fw={isDir ? 600 : 400} truncate>
+                        {entry.name}
+                        {entry.kind === "l" && entry.link ? (
+                          <Text span c="dimmed">
+                            {" "}
+                            → {entry.link}
+                          </Text>
+                        ) : null}
+                      </Text>
+                    );
                     return (
                       <Table.Tr
                         key={entry.name}
                         data-index={item.index}
                         ref={virtualizer.measureElement}
-                        className={isDir ? "host-row" : undefined}
-                        onClick={isDir ? () => go(`${path.replace(/\/$/, "")}/${entry.name}`) : undefined}
+                        className={isDir || phone ? "host-row" : undefined}
+                        onClick={isDir ? () => go(`${path.replace(/\/$/, "")}/${entry.name}`) : phone ? () => setOpened(entry) : undefined}
                         style={denied ? { opacity: 0.6 } : undefined}
                       >
                         <Table.Td>
                           <Group gap={8} wrap="nowrap">
                             {denied ? <IconLock size={16} color="var(--mantine-color-red-5)" /> : isDir ? <IconFolder size={16} color="var(--mantine-color-blue-4)" /> : <IconFile size={16} style={{ opacity: 0.6 }} />}
-                            <Text size="sm" className="mono" fw={isDir ? 600 : 400} truncate>
-                              {entry.name}
-                              {entry.kind === "l" && entry.link ? (
-                                <Text span c="dimmed">
-                                  {" "}
-                                  → {entry.link}
+                            {phone ? (
+                              // The columns that do not fit, as one line under the name.
+                              <Box miw={0} style={{ flex: 1 }}>
+                                {name}
+                                <Text size="xs" c="dimmed" className="mono" truncate>
+                                  {[isDir ? null : fmtBytes(entry.size), fmtDateTime(entry.mtime * 1000), entry.mode].filter(Boolean).join(" · ")}
                                 </Text>
-                              ) : null}
-                            </Text>
+                              </Box>
+                            ) : (
+                              name
+                            )}
                             {denied && (
-                              <Tooltip label={entry.denied}>
+                              <InfoTip label={entry.denied}>
                                 <Badge size="xs" color="red" variant="light">
                                   protected
                                 </Badge>
-                              </Tooltip>
+                              </InfoTip>
                             )}
                           </Group>
                         </Table.Td>
-                        <Table.Td ta="right">
+                        <Table.Td ta="right" visibleFrom="sm">
                           <Text size="sm" className="mono" c="dimmed">
                             {isDir ? "" : fmtBytes(entry.size)}
                           </Text>
                         </Table.Td>
-                        <Table.Td>
+                        <Table.Td visibleFrom="sm">
                           <Text size="sm" c="dimmed">
                             {fmtDateTime(entry.mtime * 1000)}
                           </Text>
                         </Table.Td>
-                        <Table.Td>
+                        <Table.Td visibleFrom="md">
                           <Text size="xs" className="mono" c="dimmed">
                             {entry.mode}
                           </Text>
                         </Table.Td>
-                        <Table.Td>
+                        <Table.Td visibleFrom="md">
                           <Text size="xs" className="mono" c="dimmed" truncate>
                             {entry.owner}:{entry.group}
                           </Text>
                         </Table.Td>
-                        <Table.Td onClick={(e) => e.stopPropagation()}>
+                        <Table.Td visibleFrom="sm" onClick={(e) => e.stopPropagation()}>
                           {!isDir && !denied && (
                             <Group gap={2} justify="flex-end" wrap="nowrap">
                               {entry.size <= 1_000_000 && (
                                 <Tooltip label="Preview">
-                                  <ActionIcon variant="subtle" color="gray" onClick={() => void openPreview(entry)}>
+                                  <ActionIcon variant="subtle" color="gray" aria-label={`preview ${entry.name}`} onClick={() => void openPreview(entry)}>
                                     <IconEye size={16} />
                                   </ActionIcon>
                                 </Tooltip>
                               )}
                               <Tooltip label="Download">
-                                <ActionIcon variant="subtle" color="gray" component="a" href={api.files.downloadUrl(alias!, `${path}/${entry.name}`)}>
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="gray"
+                                  component="a"
+                                  aria-label={`download ${entry.name}`}
+                                  href={api.files.downloadUrl(alias!, `${path}/${entry.name}`)}
+                                >
                                   <IconDownload size={16} />
                                 </ActionIcon>
                               </Tooltip>
@@ -367,7 +425,7 @@ export default function FilesPage() {
                   })}
                   {padBottom > 0 && (
                     <Table.Tr style={{ height: padBottom }}>
-                      <Table.Td colSpan={6} p={0} style={{ border: "none" }} />
+                      <Table.Td colSpan={columns} p={0} style={{ border: "none" }} />
                     </Table.Tr>
                   )}
                 </Table.Tbody>
@@ -388,7 +446,7 @@ export default function FilesPage() {
             <IconUpload size={22} style={{ opacity: 0.6 }} />
             <div>
               <Text size="sm" fw={600}>
-                Drop files here to upload to <Text span className="mono">{path}</Text>
+                {noHover ? "Tap to choose files to upload to" : "Drop files here to upload to"} <Text span className="mono">{path}</Text>
               </Text>
               <Text size="xs" c="dimmed">
                 You will be asked to confirm before anything is written to the server.
@@ -431,13 +489,81 @@ export default function FilesPage() {
         )}
       </Modal>
 
-      <Modal opened={preview !== null} onClose={() => setPreview(null)} title={preview?.name} size="xl">
-        <ScrollArea h="70vh">
-          <Code block style={{ fontSize: 12 }}>
+      <ResponsiveModal opened={preview !== null} onClose={() => setPreview(null)} title={preview?.name} size="xl">
+        {/* A phone is too narrow for most lines; there they wrap unless asked not to. */}
+        {phone && <Switch size="sm" mb="sm" label="Wrap lines" checked={previewWrap} onChange={(e) => setPreviewWrap(e.currentTarget.checked)} />}
+        <ScrollArea h={phone ? "calc(100dvh - 140px)" : "70vh"}>
+          <Code block style={{ fontSize: 12, ...(phone && previewWrap ? { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } : {}) }}>
             {preview?.text}
           </Code>
         </ScrollArea>
-      </Modal>
+      </ResponsiveModal>
+
+      <BottomSheet
+        opened={opened !== null}
+        onClose={() => setOpened(null)}
+        title={
+          <Text fw={700} className="mono" style={{ overflowWrap: "anywhere" }}>
+            {opened?.name}
+          </Text>
+        }
+      >
+        {opened && (
+          <Stack gap="sm">
+            {opened.denied && (
+              <Text size="sm" c="red.4">
+                {opened.denied}
+              </Text>
+            )}
+            <SimpleGrid cols={2} spacing="sm">
+              <Field label="Size">{fmtBytes(opened.size)}</Field>
+              <Field label="Modified">{fmtDateTime(opened.mtime * 1000)}</Field>
+              <Field label="Mode">
+                <Text span inherit className="mono">
+                  {opened.mode}
+                </Text>
+              </Field>
+              <Field label="Owner">
+                <Text span inherit className="mono">
+                  {opened.owner}:{opened.group}
+                </Text>
+              </Field>
+            </SimpleGrid>
+            {opened.kind === "l" && opened.link && <Field label="Points to">{opened.link}</Field>}
+            {!opened.denied && (
+              <Group grow>
+                {opened.size <= 1_000_000 && (
+                  <Button
+                    variant="default"
+                    leftSection={<IconEye size={16} />}
+                    onClick={() => {
+                      const entry = opened;
+                      setOpened(null);
+                      void openPreview(entry);
+                    }}
+                  >
+                    Preview
+                  </Button>
+                )}
+                <Button
+                  variant="light"
+                  leftSection={<IconDownload size={16} />}
+                  component="a"
+                  href={api.files.downloadUrl(alias!, `${path}/${opened.name}`)}
+                  onClick={() => setOpened(null)}
+                >
+                  Download
+                </Button>
+              </Group>
+            )}
+            {opened.size > 1_000_000 && !opened.denied && (
+              <Text size="xs" c="dimmed">
+                Over 1 MB: too large to preview here; download it instead.
+              </Text>
+            )}
+          </Stack>
+        )}
+      </BottomSheet>
     </Stack>
   );
 }

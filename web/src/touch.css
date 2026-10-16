@@ -157,6 +157,11 @@
     padding-bottom: calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom));
   }
 
+  /* On a phone the page scrolls the toolbar away and the listing takes most of the screen. */
+  .files-scroll {
+    max-height: max(300px, calc(100dvh - var(--tabbar-h) - 150px));
+  }
+
   /* A command shown in full: wrapped on a phone instead of scrolled sideways under a thumb. */
   .phone-wrap {
     white-space: pre-wrap !important;
