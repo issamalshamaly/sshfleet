@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Code, Group, Modal, ScrollArea, Stack, Text, TextInput, Timeline } from "@mantine/core";
+import { Alert, Badge, Button, Code, Group, ScrollArea, Stack, Text, TextInput, Timeline } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle, IconCheck, IconRefresh, IconX } from "@tabler/icons-react";
@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api, jobStream } from "../api/client";
 import type { JobResult, JobStep } from "../api/types";
+import { ResponsiveModal, StickyActions } from "./responsive";
 
 interface Props {
   alias: string;
@@ -68,7 +69,7 @@ export function RestartModal({ alias, container, onClose }: Props) {
   const phaseColor = (phase: string) => (phase === "verified" ? "teal" : phase === "failed" ? "red" : "gray");
 
   return (
-    <Modal
+    <ResponsiveModal
       opened={opened}
       onClose={() => {
         abort.current?.abort();
@@ -120,7 +121,8 @@ export function RestartModal({ alias, container, onClose }: Props) {
               <Text size="sm" c="dimmed" w={96}>
                 Runs
               </Text>
-              <Code block style={{ flex: 1, fontSize: 12 }}>
+              {/* Beside its label where it fits, under it on a phone, wrapped rather than scrolled. */}
+              <Code block className="phone-wrap" style={{ flex: "1 1 260px", minWidth: 0, fontSize: 12 }}>
                 {preview.data.preview}
               </Code>
             </Group>
@@ -178,7 +180,7 @@ export function RestartModal({ alias, container, onClose }: Props) {
           </Alert>
         )}
 
-        <Group justify="flex-end">
+        <StickyActions>
           <Button variant="default" onClick={onClose} leftSection={<IconX size={16} />}>
             {result ? "Close" : "Cancel"}
           </Button>
@@ -187,8 +189,8 @@ export function RestartModal({ alias, container, onClose }: Props) {
               Restart
             </Button>
           )}
-        </Group>
+        </StickyActions>
       </Stack>
-    </Modal>
+    </ResponsiveModal>
   );
 }

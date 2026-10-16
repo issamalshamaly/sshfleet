@@ -197,3 +197,11 @@ body {
   height: 100dvh;
   overflow: auto;
 }
+
+/* A metric's detail, written under its bar on a touch screen where the tooltip cannot open. */
+.metric-hint {
+  grid-column: 1 / -1;
+  text-align: right;
+  white-space: normal;
+  margin-top: -6px;
+}

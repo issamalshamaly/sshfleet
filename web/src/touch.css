@@ -151,6 +151,12 @@
     padding-bottom: calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom));
   }
 
+  /* A command shown in full: wrapped on a phone instead of scrolled sideways under a thumb. */
+  .phone-wrap {
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere;
+  }
+
   /* Full-screen drawers and modals keep their last line clear of the home indicator. */
   .responsive-overlay .mantine-Drawer-body,
   .responsive-overlay .mantine-Modal-body {

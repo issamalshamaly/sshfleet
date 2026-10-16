@@ -1,10 +1,11 @@
-import { Alert, Button, Divider, Grid, Group, Modal, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Divider, Grid, Group, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/client";
 import type { Host, Tunnel } from "../api/types";
+import { ResponsiveModal, StickyActions } from "./responsive";
 
 /** What people actually tunnel to here, so the common cases are one click. */
 const COMMON = [
@@ -111,7 +112,7 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
     !portError(remotePort);
 
   return (
-    <Modal opened={opened} onClose={onClose} title={editing ? `Edit ${editing.name}` : "Add a tunnel"} size="lg" centered>
+    <ResponsiveModal opened={opened} onClose={onClose} title={editing ? `Edit ${editing.name}` : "Add a tunnel"} size="lg" centered>
       <Stack gap="sm">
         <Text size="sm" c="dimmed">
           A tunnel forwards a local port to something only the servers can reach. It rides on the connection sshfleet already holds
@@ -130,7 +131,7 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
         </Group>
 
         <Grid align="flex-end" gutter="sm">
-          <Grid.Col span={7}>
+          <Grid.Col span={{ base: 12, sm: 7 }}>
             <TextInput
               label="Name"
               description="What you will call it"
@@ -143,7 +144,7 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
               disabled={!!editing}
             />
           </Grid.Col>
-          <Grid.Col span={5}>
+          <Grid.Col span={{ base: 12, sm: 5 }}>
             <Select
               label="Environment"
               description="Where it lives"
@@ -168,7 +169,7 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
         />
 
         <Grid align="flex-end" gutter="sm">
-          <Grid.Col span={6}>
+          <Grid.Col span={{ base: 12, sm: 6 }}>
             <TextInput
               label="Remote address"
               description="As seen from that server"
@@ -177,7 +178,7 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
               placeholder="127.0.0.1"
             />
           </Grid.Col>
-          <Grid.Col span={3}>
+          <Grid.Col span={{ base: 6, sm: 3 }}>
             <NumberInput
               label="Remote port"
               description="Over there"
@@ -191,7 +192,7 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
               error={portError(remotePort)}
             />
           </Grid.Col>
-          <Grid.Col span={3}>
+          <Grid.Col span={{ base: 6, sm: 3 }}>
             <NumberInput
               label="Local port"
               description="On this machine"
@@ -222,15 +223,15 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
         </Alert>
 
         <Divider my={2} />
-        <Group justify="flex-end">
+        <StickyActions>
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
           <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!valid}>
             {editing ? "Save changes" : "Add tunnel"}
           </Button>
-        </Group>
+        </StickyActions>
       </Stack>
-    </Modal>
+    </ResponsiveModal>
   );
 }

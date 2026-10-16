@@ -1,4 +1,4 @@
-import { Box, Button, Collapse, Drawer, Group, Menu, Stack, Text, UnstyledButton } from "@mantine/core";
+import { Box, Button, Collapse, Group, Menu, Stack, Text, UnstyledButton } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
 import { IconChevronDown, IconChevronRight, IconEyeOff } from "@tabler/icons-react";
@@ -8,6 +8,7 @@ import { api } from "../api/client";
 import type { Alert } from "../api/types";
 import { useViewState } from "../state/views";
 import { EmptyState, SeverityBadge } from "./common";
+import { ResponsiveDrawer } from "./responsive";
 
 /** The glob the server saves for "every container named like it" (inventory/model.py
  *  `ignore_glob_for`): the name up to its first numbered segment. Shown before choosing, so
@@ -129,7 +130,7 @@ export function AlertsDrawer({ opened, onClose, alerts }: { opened: boolean; onC
   };
 
   return (
-    <Drawer opened={opened} onClose={onClose} position="right" size="md" title={`Active alerts (${active.length})`}>
+    <ResponsiveDrawer opened={opened} onClose={onClose} position="right" size="md" title={`Active alerts (${active.length})`}>
       <Stack gap="xs">
         {active.length === 0 ? (
           <EmptyState title="Nothing needs attention" hint="Alerts appear here as soon as a refresh finds one." />
@@ -163,6 +164,6 @@ export function AlertsDrawer({ opened, onClose, alerts }: { opened: boolean; onC
           </>
         )}
       </Stack>
-    </Drawer>
+    </ResponsiveDrawer>
   );
 }

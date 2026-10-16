@@ -106,7 +106,7 @@ export function ResponsiveModal({ confirm, fullScreen, className, ...rest }: Mod
  *  width, so the main action is always under the thumb however long the form is. */
 export function StickyActions({ children, className, ...rest }: GroupProps & { children: ReactNode }) {
   return (
-    <Group justify="flex-end" gap="xs" {...rest} className={[className, "sticky-actions"].filter(Boolean).join(" ")}>
+    <Group justify="flex-end" {...rest} className={[className, "sticky-actions"].filter(Boolean).join(" ")}>
       {children}
     </Group>
   );
@@ -160,17 +160,19 @@ type ResponsiveSegmentedProps = SegmentedControlProps & {
   phone?: "select" | "vertical";
   /** The dropdown's label on a phone, where the choices lose the context the row gave them. */
   selectLabel?: string;
+  /** Or a word in front of each choice instead, for a toolbar with no room for a label: "Role: All". */
+  selectPrefix?: string;
 };
 
 /** A segmented control that stays usable on a phone, where its options do not fit side by side. */
-export function ResponsiveSegmented({ phone: mode = "select", selectLabel, ...props }: ResponsiveSegmentedProps) {
+export function ResponsiveSegmented({ phone: mode = "select", selectLabel, selectPrefix = "", ...props }: ResponsiveSegmentedProps) {
   const phone = useIsPhone();
   if (!phone) return <SegmentedControl {...props} />;
   if (mode === "vertical") return <SegmentedControl {...props} orientation="vertical" fullWidth />;
   const data = props.data.map((item) =>
     typeof item === "string"
-      ? { value: item, label: item }
-      : { value: item.value, label: typeof item.label === "string" ? item.label : item.value, disabled: item.disabled },
+      ? { value: item, label: selectPrefix + item }
+      : { value: item.value, label: selectPrefix + (typeof item.label === "string" ? item.label : item.value), disabled: item.disabled },
   );
   return (
     <Select

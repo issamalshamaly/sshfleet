@@ -2,13 +2,13 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Card,
   Divider,
   Group,
   Loader,
   Menu,
-  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
@@ -35,15 +35,17 @@ import {
 import { useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import type { Host, PausedBy } from "../api/types";
+import type { Environment, Host, PausedBy } from "../api/types";
 import { EmptyState, EnvBadge, PercentBar, ReachStatus, RoleBadge, SearchInput, SeverityBadge } from "../components/common";
 import { HostDrawer } from "../components/HostDrawer";
+import { CardActions, DataCard, Field, InfoTip, ResponsiveSegmented } from "../components/responsive";
 import { api } from "../api/client";
 import { useConfig, useFleet } from "../hooks/useFleet";
 import { useInvalidateSettings, usePause } from "../hooks/useSettings";
 import { fmtAge, fmtUptime } from "../lib/format";
 import { FRESH_LOGS, logsPath } from "../lib/navigation";
-import { pausedItself, pauseTargetLabel } from "../lib/pause";
+import { pausedItself, pauseReason, pauseTargetLabel } from "../lib/pause";
+import { useBelowLg, useIsCompact, useNoHover } from "../lib/responsive";
 import { useEnv } from "../state/env";
 import { useTerminals } from "../state/terminals";
 import { usePageLimit, useViewState } from "../state/views";
@@ -68,28 +70,37 @@ function viaLabel(alias: string, via: string): string {
   return shared > 0 && cut > 0 && cut < via.length ? via.slice(cut) : via;
 }
 
-function containersCell(host: Host) {
+/** What a host's containers add up to, for the table's cell and the phone's card alike. */
+function containerFacts(host: Host) {
   const snapshot = host.snapshot;
-  if (!snapshot || !snapshot.reachable) return <Text size="sm" c="dimmed">—</Text>;
-  if (snapshot.runtime === "none") return <Text size="sm" c="dimmed">static</Text>;
+  if (!snapshot || !snapshot.reachable || snapshot.runtime === "none") return null;
   // Ignored containers are a job runner's churn, counted apart: they must not make a host that
   // is short a service look complete, nor turn a healthy host red when a batch of them exits.
   const tracked = snapshot.containers.filter((c) => !c.ignored);
   const churn = snapshot.containers.length - tracked.length;
   const running = tracked.filter((c) => c.state === "running").length;
   const stopped = tracked.length - running;
-  const gone = snapshot.missing_containers.length + snapshot.vanished_containers.length;
+  const goneNames = [...snapshot.missing_containers, ...snapshot.vanished_containers];
+  const gone = goneNames.length;
   // Expected = a number the operator set, else everything that is or should be here.
   const expected = snapshot.expected_count ?? (gone ? tracked.length + gone : 0);
   const short = gone > 0 || (snapshot.expected_count !== null && tracked.length < snapshot.expected_count);
+  return { running, stopped, churn, gone, goneNames, expected, short, setByHand: snapshot.expected_count };
+}
+
+function containersCell(host: Host) {
+  const snapshot = host.snapshot;
+  if (!snapshot || !snapshot.reachable) return <Text size="sm" c="dimmed">—</Text>;
+  if (snapshot.runtime === "none") return <Text size="sm" c="dimmed">static</Text>;
+  const { running, stopped, churn, gone, goneNames, expected, short, setByHand } = containerFacts(host)!;
   return (
-    <Tooltip
+    <InfoTip
       label={[
         `${running} running`,
         stopped ? `${stopped} stopped` : null,
         churn ? `${churn} ignored (job containers)` : null,
-        gone ? `${gone} gone: ${[...snapshot.missing_containers, ...snapshot.vanished_containers].join(", ")}` : null,
-        snapshot.expected_count !== null ? `${snapshot.expected_count} expected (set by hand)` : null,
+        gone ? `${gone} gone: ${goneNames.join(", ")}` : null,
+        setByHand !== null ? `${setByHand} expected (set by hand)` : null,
       ]
         .filter(Boolean)
         .join("\n")}
@@ -105,8 +116,34 @@ function containersCell(host: Host) {
           </Text>
         ) : null}
       </Text>
-    </Tooltip>
+    </InfoTip>
   );
+}
+
+/** The containers in words, for a card that has no tooltip to put them in. */
+function containersWords(host: Host) {
+  if (host.snapshot?.runtime === "none") return <Text size="sm" c="dimmed">static site</Text>;
+  const facts = containerFacts(host);
+  if (!facts) return <Text size="sm" c="dimmed">—</Text>;
+  const { running, stopped, churn, gone, goneNames, expected, short } = facts;
+  return (
+    <Text size="sm" c={short ? "red.4" : undefined} fw={short ? 600 : undefined}>
+      {expected ? `${running} of ${expected}` : running} running
+      {stopped ? ` · ${stopped} stopped` : ""}
+      {churn ? ` · ${churn} ignored` : ""}
+      {gone ? ` · ${gone} gone: ${goneNames.join(", ")}` : ""}
+    </Text>
+  );
+}
+
+/** The endpoint checks, the same words the table's tooltip uses. */
+function healthLines(host: Host): string[] {
+  const probes = host.snapshot?.probes ?? [];
+  if (!probes.length) return [];
+  const age = probes[0].at ? (host.snapshot?.at ?? 0) - probes[0].at : 0;
+  const lines = probes.map((p) => `${p.port}${p.path} → ${p.code}`);
+  if (age > 90) lines.push(`checked ${fmtAge(age)} ago`);
+  return lines;
 }
 
 function healthCell(host: Host) {
@@ -122,16 +159,16 @@ function healthCell(host: Host) {
   if (carried) lines.push(`checked ${fmtAge(age)} ago`);
   return (
     // pre-line, or the newline between several probes collapses and the lines run together.
-    <Tooltip label={lines.join("\n")} multiline style={{ whiteSpace: "pre-line" }}>
+    <InfoTip label={lines.join("\n")} multiline style={{ whiteSpace: "pre-line" }}>
       <Badge color={ok === probes.length ? "teal" : "red"} variant={carried ? "outline" : "light"} size="sm" className="mono">
         {probes.length === 1 ? probe.code : `${ok}/${probes.length}`}
         {carried ? ` · ${fmtAge(age)}` : ""}
       </Badge>
-    </Tooltip>
+    </InfoTip>
   );
 }
 
-function alertsCell(host: Host) {
+function alertsCell(host: Host, wrap = false) {
   const alerts = host.snapshot?.alerts ?? [];
   if (!alerts.length) return null;
   const counts = new Map<string, { n: number; severity: "crit" | "warn" | "info" }>();
@@ -144,7 +181,7 @@ function alertsCell(host: Host) {
   }
   const sorted = [...counts.entries()].sort((a, b) => SEVERITY_RANK[a[1].severity] - SEVERITY_RANK[b[1].severity]);
   return (
-    <Group gap={4} wrap="nowrap">
+    <Group gap={4} wrap={wrap ? "wrap" : "nowrap"}>
       {sorted.slice(0, 3).map(([code, { n, severity }]) => (
         <SeverityBadge key={code} severity={severity}>
           {code}
@@ -154,6 +191,7 @@ function alertsCell(host: Host) {
       {sorted.length > 3 && (
         <Text size="xs" c="dimmed">
           +{sorted.length - 3}
+          {wrap ? " more" : ""}
         </Text>
       )}
     </Group>
@@ -164,7 +202,6 @@ export default function FleetPage() {
   const { env, project, inScope } = useEnv();
   const config = useConfig();
   const fleet = useFleet();
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // Kept between visits: the fleet filtered to one service is still filtered when you come back.
   const [query, setQuery] = useViewState("fleet.query", "");
@@ -183,6 +220,21 @@ export default function FleetPage() {
   });
   const setPaused = usePause();
   const terminals = useTerminals();
+  // Below md a row of thirteen columns does not fit; each host becomes a card. The table steps
+  // down a little between md and lg, and a touch screen says what the star just did.
+  const compact = useIsCompact();
+  const belowLg = useBelowLg();
+  const noHover = useNoHover();
+  const toggleStar = (host: Host) =>
+    toggleMain.mutate(host, {
+      onSuccess: () => {
+        if (!noHover) return;
+        notifications.show({
+          color: "teal",
+          message: host.main ? `${host.label} is left out of the default log search` : `${host.label} is now in the default log search`,
+        });
+      },
+    });
 
   // A paused project or environment explains a page of paused hosts, so it is named above them
   // and can be resumed from here. A project's pause covers its environments' own.
@@ -275,6 +327,22 @@ export default function FleetPage() {
     params.delete("host");
     setParams(params);
   };
+
+  const moreBar = (
+    <Group justify="space-between" px="md" py="xs" gap="xs">
+      <Text size="xs" c="dimmed">
+        Showing {shown.length} of {hosts.length}
+      </Text>
+      <Group gap="xs">
+        <Button size="compact-sm" variant="subtle" onClick={() => setLimit((current) => current + PAGE)}>
+          Show {Math.min(more, PAGE)} more
+        </Button>
+        <Button size="compact-sm" variant="subtle" c="dimmed" onClick={() => setLimit(hosts.length)}>
+          Show all {hosts.length}
+        </Button>
+      </Group>
+    </Group>
+  );
 
   return (
     <Stack gap="md" style={{ flex: 1 }}>
@@ -369,12 +437,13 @@ export default function FleetPage() {
       </SimpleGrid>
 
       <Group justify="space-between" wrap="wrap" gap="sm">
-        <Group gap="sm">
-          <SearchInput placeholder="Filter by host, service or container…" value={query} onChange={setQuery} w={300} size="sm" />
-          <SegmentedControl
+        <Group gap="sm" w={{ base: "100%", sm: "auto" }}>
+          <SearchInput placeholder="Filter by host, service or container…" value={query} onChange={setQuery} w={{ base: "100%", sm: 300 }} size="sm" />
+          <ResponsiveSegmented
             size="xs"
             value={role}
             onChange={setRole}
+            selectPrefix="Role: "
             data={[
               { label: "All", value: "all" },
               { label: "Services", value: "service" },
@@ -385,11 +454,11 @@ export default function FleetPage() {
             ]}
           />
         </Group>
-        <Group gap="md">
+        <Group gap="md" wrap="nowrap" w={{ base: "100%", sm: "auto" }} justify="space-between">
           <Switch size="sm" label="Alerts only" checked={alertsOnly} onChange={(e) => setAlertsOnly(e.currentTarget.checked)} />
           <Select
             size="sm"
-            w={150}
+            w={170}
             value={sort}
             onChange={(v) => setSort((v as SortKey) ?? "alerts")}
             data={[
@@ -404,6 +473,29 @@ export default function FleetPage() {
         </Group>
       </Group>
 
+      {compact && !fleet.isLoading && hosts.length > 0 ? (
+        <Stack gap="sm">
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+            {shown.map((host) => (
+              <HostCard
+                key={host.alias}
+                host={host}
+                selected={host.alias === selectedAlias}
+                showEnv={!env}
+                environments={config.data?.environments ?? []}
+                thresholds={thresholds}
+                onOpen={() => openHost(host.alias)}
+                onToggleStar={() => toggleStar(host)}
+              />
+            ))}
+          </SimpleGrid>
+          {more > 0 && (
+            <Card withBorder padding={0}>
+              {moreBar}
+            </Card>
+          )}
+        </Stack>
+      ) : (
       <Card withBorder padding={0} style={{ overflow: "hidden" }}>
         {fleet.isLoading ? (
           <Group justify="center" py={60}>
@@ -412,7 +504,7 @@ export default function FleetPage() {
         ) : hosts.length === 0 ? (
           <EmptyState title="No hosts match" hint="Adjust the filter, or register an environment with `sshfleet env add`." />
         ) : (
-          <Table.ScrollContainer minWidth={1100}>
+          <Table.ScrollContainer minWidth={belowLg ? 940 : 1100}>
             <Table highlightOnHover stickyHeader verticalSpacing={8}>
               <Table.Thead>
                 <Table.Tr>
@@ -426,8 +518,8 @@ export default function FleetPage() {
                   <Table.Th w={110}>Disk</Table.Th>
                   <Table.Th ta="center" w={96}>Containers</Table.Th>
                   <Table.Th ta="center" w={80}>Health</Table.Th>
-                  <Table.Th ta="right" w={84}>Uptime</Table.Th>
-                  <Table.Th ta="right" w={56}>Age</Table.Th>
+                  <Table.Th ta="right" w={84} visibleFrom="lg">Uptime</Table.Th>
+                  <Table.Th ta="right" w={56} visibleFrom="lg">Age</Table.Th>
                   <Table.Th w={110} />
                 </Table.Tr>
               </Table.Thead>
@@ -455,7 +547,7 @@ export default function FleetPage() {
                             size="sm"
                             color={host.main ? "yellow" : "gray"}
                             aria-label={`default log search for ${host.alias}`}
-                            onClick={() => toggleMain.mutate(host)}
+                            onClick={() => toggleStar(host)}
                           >
                             {host.main ? <IconStarFilled size={14} /> : <IconStar size={14} />}
                           </ActionIcon>
@@ -502,80 +594,19 @@ export default function FleetPage() {
                       </Table.Td>
                       <Table.Td ta="center">{containersCell(host)}</Table.Td>
                       <Table.Td ta="center">{healthCell(host)}</Table.Td>
-                      <Table.Td ta="right" className="nowrap">
+                      <Table.Td ta="right" className="nowrap" visibleFrom="lg">
                         <Text size="sm" className="mono" c="dimmed">
                           {up ? fmtUptime(s?.uptime_s) : "—"}
                         </Text>
                       </Table.Td>
-                      <Table.Td ta="right">
+                      <Table.Td ta="right" visibleFrom="lg">
                         <Text size="xs" className="mono" c={host.stale ? "yellow.4" : "dimmed"}>
                           {fmtAge(host.age_s)}
                         </Text>
                       </Table.Td>
                       <Table.Td onClick={(e) => e.stopPropagation()}>
                         <Group gap={2} wrap="nowrap" justify="flex-end">
-                          {(host.snapshot?.sites?.length ?? 0) > 0 && (
-                            <Menu position="bottom-end" width={260} withinPortal>
-                              <Menu.Target>
-                                <Tooltip label={`${host.snapshot!.sites.length} site${host.snapshot!.sites.length > 1 ? "s" : ""} served here`}>
-                                  <ActionIcon variant="subtle" color="gray">
-                                    <IconWorld size={16} />
-                                  </ActionIcon>
-                                </Tooltip>
-                              </Menu.Target>
-                              <Menu.Dropdown>
-                                <Menu.Label>Served here · opens in a new tab</Menu.Label>
-                                {host.snapshot!.sites.map((site) => (
-                                  <Menu.Item
-                                    key={`${site.name}:${site.port}`}
-                                    component="a"
-                                    href={site.url}
-                                    target="_blank"
-                                    rel="noreferrer noopener"
-                                    leftSection={site.ssl ? <IconLock size={13} /> : <IconLockOpen size={13} />}
-                                  >
-                                    <Text size="sm" className="mono" truncate>
-                                      {site.name}
-                                    </Text>
-                                    <Text size="xs" c="dimmed">
-                                      {site.source}
-                                      {site.port !== (site.ssl ? 443 : 80) ? ` · port ${site.port}` : ""}
-                                    </Text>
-                                  </Menu.Item>
-                                ))}
-                              </Menu.Dropdown>
-                            </Menu>
-                          )}
-                          {host.paused_by ? (
-                            // Shell, logs and files would all need a connection it is not given.
-                            pausedItself(host) && (
-                              <Tooltip label="Resume monitoring">
-                                <ActionIcon
-                                  variant="subtle"
-                                  color="teal"
-                                  aria-label={`resume ${host.alias}`}
-                                  loading={setPaused.isPending && setPaused.variables?.target.name === host.alias}
-                                  onClick={() => setPaused.mutate({ target: { kind: "host", name: host.alias }, paused: false })}
-                                >
-                                  <IconPlayerPlay size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                            )
-                          ) : (
-                            <>
-                              <ShellButton alias={host.alias} />
-                              <Tooltip label="Logs">
-                                <ActionIcon variant="subtle" color="gray" onClick={() => navigate(logsPath({ env: host.env, host: host.alias }), FRESH_LOGS)}>
-                                  <IconFileText size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Files">
-                                <ActionIcon variant="subtle" color="gray" onClick={() => navigate(`/files?host=${encodeURIComponent(host.alias)}`)}>
-                                  <IconFolders size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                            </>
-                          )}
+                          <HostActions host={host} />
                         </Group>
                       </Table.Td>
                     </Table.Tr>
@@ -588,22 +619,11 @@ export default function FleetPage() {
         {more > 0 && (
           <>
             <Divider />
-            <Group justify="space-between" px="md" py="xs">
-              <Text size="xs" c="dimmed">
-                Showing {shown.length} of {hosts.length}
-              </Text>
-              <Group gap="xs">
-                <Button size="compact-sm" variant="subtle" onClick={() => setLimit((current) => current + PAGE)}>
-                  Show {Math.min(more, PAGE)} more
-                </Button>
-                <Button size="compact-sm" variant="subtle" c="dimmed" onClick={() => setLimit(hosts.length)}>
-                  Show all {hosts.length}
-                </Button>
-              </Group>
-            </Group>
+            {moreBar}
           </>
         )}
       </Card>
+      )}
 
       <Group gap="md" justify="space-between">
         <Text size="xs" c="dimmed">
@@ -620,15 +640,229 @@ export default function FleetPage() {
   );
 }
 
+/** What can be done to a host from its row or its card: its sites, then a shell, its logs and
+ *  its files — or, when it is paused on its own, resuming it. The card spells each one out. */
+function HostActions({ host, labelled = false }: { host: Host; labelled?: boolean }) {
+  const navigate = useNavigate();
+  const setPaused = usePause();
+  const sites = host.snapshot?.sites ?? [];
+  const openLogs = () => navigate(logsPath({ env: host.env, host: host.alias }), FRESH_LOGS);
+  const openFiles = () => navigate(`/files?host=${encodeURIComponent(host.alias)}`);
+  return (
+    <>
+      {sites.length > 0 && (
+        <Menu position="bottom-end" width={260} withinPortal>
+          <Menu.Target>
+            {labelled ? (
+              <Button variant="default" leftSection={<IconWorld size={16} />}>
+                Sites · {sites.length}
+              </Button>
+            ) : (
+              <Tooltip label={`${sites.length} site${sites.length > 1 ? "s" : ""} served here`}>
+                <ActionIcon variant="subtle" color="gray" aria-label={`sites served by ${host.alias}`}>
+                  <IconWorld size={16} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Label>Served here · opens in a new tab</Menu.Label>
+            {sites.map((site) => (
+              <Menu.Item
+                key={`${site.name}:${site.port}`}
+                component="a"
+                href={site.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                leftSection={site.ssl ? <IconLock size={13} /> : <IconLockOpen size={13} />}
+              >
+                <Text size="sm" className="mono" truncate>
+                  {site.name}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {site.source}
+                  {site.port !== (site.ssl ? 443 : 80) ? ` · port ${site.port}` : ""}
+                </Text>
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+      )}
+      {host.paused_by ? (
+        // Shell, logs and files would all need a connection it is not given.
+        pausedItself(host) &&
+        (labelled ? (
+          <Button
+            variant="light"
+            color="teal"
+            leftSection={<IconPlayerPlay size={16} />}
+            loading={setPaused.isPending && setPaused.variables?.target.name === host.alias}
+            onClick={() => setPaused.mutate({ target: { kind: "host", name: host.alias }, paused: false })}
+          >
+            Resume monitoring
+          </Button>
+        ) : (
+          <Tooltip label="Resume monitoring">
+            <ActionIcon
+              variant="subtle"
+              color="teal"
+              aria-label={`resume ${host.alias}`}
+              loading={setPaused.isPending && setPaused.variables?.target.name === host.alias}
+              onClick={() => setPaused.mutate({ target: { kind: "host", name: host.alias }, paused: false })}
+            >
+              <IconPlayerPlay size={16} />
+            </ActionIcon>
+          </Tooltip>
+        ))
+      ) : labelled ? (
+        <>
+          <ShellButton alias={host.alias} labelled />
+          <Button variant="default" leftSection={<IconFileText size={16} />} onClick={openLogs}>
+            Logs
+          </Button>
+          <Button variant="default" leftSection={<IconFolders size={16} />} onClick={openFiles}>
+            Files
+          </Button>
+        </>
+      ) : (
+        <>
+          <ShellButton alias={host.alias} />
+          <Tooltip label="Logs">
+            <ActionIcon variant="subtle" color="gray" aria-label={`logs of ${host.alias}`} onClick={openLogs}>
+              <IconFileText size={16} />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Files">
+            <ActionIcon variant="subtle" color="gray" aria-label={`files on ${host.alias}`} onClick={openFiles}>
+              <IconFolders size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </>
+      )}
+    </>
+  );
+}
+
+/** One host as a card, for screens too narrow for the table: what the row says, in words, with
+ *  its buttons labelled. A tap anywhere but a button opens the host, as a row does. */
+function HostCard({
+  host,
+  selected,
+  showEnv,
+  environments,
+  thresholds,
+  onOpen,
+  onToggleStar,
+}: {
+  host: Host;
+  selected: boolean;
+  showEnv: boolean;
+  environments: Environment[];
+  thresholds: Record<string, number>;
+  onOpen: () => void;
+  onToggleStar: () => void;
+}) {
+  const s = host.snapshot;
+  const up = s?.reachable ?? false;
+  const disk = s?.disks.length ? Math.max(...s.disks.map((d) => d.pct)) : null;
+  const problem = host.paused_by ? pauseReason(host) : s && !s.reachable ? (s.error?.message ?? "unreachable") : null;
+  const health = healthLines(host);
+  const probesOk = (s?.probes ?? []).every((p) => p.ok);
+  const hasActions = !host.paused_by || pausedItself(host) || (s?.sites?.length ?? 0) > 0;
+  const loadHigh = up && s && s.load[0] / Math.max(s.cpus, 1) >= (thresholds.load_per_cpu_warn ?? 1.5);
+  return (
+    <DataCard onClick={onOpen} selected={selected}>
+      <Group justify="space-between" wrap="nowrap" gap="xs" align="flex-start">
+        <Group gap={4} wrap="nowrap" miw={0} align="flex-start">
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            color={host.main ? "yellow" : "gray"}
+            aria-label={host.main ? `leave ${host.alias} out of the default log search` : `add ${host.alias} to the default log search`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleStar();
+            }}
+          >
+            {host.main ? <IconStarFilled size={14} /> : <IconStar size={14} />}
+          </ActionIcon>
+          <Box miw={0}>
+            <Text size="sm" fw={600} className="mono" truncate>
+              {host.label}
+            </Text>
+            <Text size="xs" c="dimmed" truncate>
+              {host.role}
+              {host.via ? ` · via ${viaLabel(host.alias, host.via)}` : ""}
+            </Text>
+          </Box>
+        </Group>
+        <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
+          {showEnv && <EnvBadge env={host.env} environments={environments} />}
+          <ReachStatus host={host} />
+        </Group>
+      </Group>
+      {problem && (
+        <Text size="xs" mt={6} c={host.paused_by ? "orange.4" : "red.4"} style={{ overflowWrap: "anywhere" }}>
+          {problem}
+        </Text>
+      )}
+      {(s?.alerts.length ?? 0) > 0 && <Box mt={8}>{alertsCell(host, true)}</Box>}
+      {up && s && (
+        <>
+          <SimpleGrid cols={2} spacing="sm" verticalSpacing={8} mt={10}>
+            <Field label="Containers">{containersWords(host)}</Field>
+            <Field label="Health">
+              {health.length ? (
+                <Text size="sm" className="mono" c={probesOk ? undefined : "red.4"}>
+                  {health.join(" · ")}
+                </Text>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  —
+                </Text>
+              )}
+            </Field>
+            <Field label="Memory">
+              <PercentBar value={s.mem.used_pct} warn={thresholds.mem_warn_pct ?? 85} crit={thresholds.mem_crit_pct ?? 95} width={70} />
+            </Field>
+            <Field label="Disk">
+              <PercentBar value={disk} warn={thresholds.disk_warn_pct ?? 80} crit={thresholds.disk_crit_pct ?? 90} width={70} />
+            </Field>
+          </SimpleGrid>
+          <Text size="xs" c="dimmed" mt={8}>
+            <Text span inherit c={loadHigh ? "yellow.4" : undefined}>
+              load {s.load[0].toFixed(2)}
+            </Text>
+            {" · "}up {fmtUptime(s.uptime_s)}
+            {" · "}
+            <Text span inherit c={host.stale ? "yellow.4" : undefined}>
+              checked {fmtAge(host.age_s)} ago
+            </Text>
+          </Text>
+        </>
+      )}
+      {hasActions && (
+        <CardActions>
+          <HostActions host={host} labelled />
+        </CardActions>
+      )}
+    </DataCard>
+  );
+}
+
 /** The row's terminal button. With no shell open it opens one; with shells open it asks which —
  *  one of those, or another beside them — since both are what a second click can mean. */
-function ShellButton({ alias }: { alias: string }) {
+function ShellButton({ alias, labelled = false }: { alias: string; labelled?: boolean }) {
   const terminals = useTerminals();
   const open = terminals.hostSessions(alias);
   if (open.length === 0) {
-    return (
+    return labelled ? (
+      <Button variant="default" leftSection={<IconTerminal2 size={16} />} onClick={() => terminals.newHost(alias)}>
+        Shell
+      </Button>
+    ) : (
       <Tooltip label="Terminal">
-        <ActionIcon variant="subtle" color="gray" onClick={() => terminals.newHost(alias)}>
+        <ActionIcon variant="subtle" color="gray" aria-label={`shell on ${alias}`} onClick={() => terminals.newHost(alias)}>
           <IconTerminal2 size={16} />
         </ActionIcon>
       </Tooltip>
@@ -637,11 +871,17 @@ function ShellButton({ alias }: { alias: string }) {
   return (
     <Menu position="bottom-end" width={220} withinPortal>
       <Menu.Target>
-        <Tooltip label={open.length === 1 ? "A shell is open here" : `${open.length} shells are open here`}>
-          <ActionIcon variant="light" color="teal">
-            <IconTerminal2 size={16} />
-          </ActionIcon>
-        </Tooltip>
+        {labelled ? (
+          <Button variant="light" color="teal" leftSection={<IconTerminal2 size={16} />}>
+            {open.length === 1 ? "Shell" : `Shells · ${open.length}`}
+          </Button>
+        ) : (
+          <Tooltip label={open.length === 1 ? "A shell is open here" : `${open.length} shells are open here`}>
+            <ActionIcon variant="light" color="teal" aria-label={`shells open on ${alias}`}>
+              <IconTerminal2 size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
       </Menu.Target>
       <Menu.Dropdown>
         <Menu.Label>Open here</Menu.Label>

@@ -2,9 +2,9 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Card,
-  Drawer,
   Group,
   Menu,
   Progress,
@@ -31,7 +31,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -40,10 +40,12 @@ import type { Container, Environment, Host } from "../api/types";
 import { fmtAge, fmtBytes, fmtUptime, shortImage } from "../lib/format";
 import { FRESH_LOGS, logsPath } from "../lib/navigation";
 import { pausedItself, pauseTargetLabel } from "../lib/pause";
+import { useIsCompact, useIsPhone, useNoHover } from "../lib/responsive";
 import { EmptyState, EnvBadge, ReachStatus, RoleBadge, SeverityBadge } from "./common";
 import { ContainerActions } from "./ContainerActions";
 import { DeleteContainerModal } from "./DeleteContainerModal";
 import { RestartModal } from "./RestartModal";
+import { CardActions, DataCard, ResponsiveDrawer } from "./responsive";
 import { useViewState } from "../state/views";
 
 interface Props {
@@ -66,6 +68,12 @@ function Metric({ label, value, pct, color, hint }: { label: string; value: stri
           {value}
         </Text>
       </Tooltip>
+      {/* No hover on a touch screen: the detail is written under the bar instead. */}
+      {hint && (
+        <Text size="xs" c="dimmed" className="mono touch-only metric-hint">
+          {hint}
+        </Text>
+      )}
     </div>
   );
 }
@@ -80,11 +88,22 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
   const tab = host && shownTab.alias === host.alias ? shownTab.tab : "overview";
   const invalidate = useInvalidateSettings();
   const setPaused = usePause();
+  const phone = useIsPhone();
+  const compact = useIsCompact();
+  const noHover = useNoHover();
   const toggleMain = () =>
     host
       ? api.settings
           .updateHost(host.alias, { main: !host.main })
-          .then(() => invalidate())
+          .then(() => {
+            invalidate();
+            // A touch screen has no tooltip to have said what the star does.
+            if (noHover)
+              notifications.show({
+                color: "teal",
+                message: host.main ? `${host.label} is left out of the default log search` : `${host.label} is now in the default log search`,
+              });
+          })
           .catch((error: Error) => notifications.show({ title: "Could not save", message: error.message, color: "red" }))
       : Promise.resolve();
   // "family" is for the containers a scheduler names: the saved rule is a glob, so the toast has
@@ -111,17 +130,17 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
 
   return (
     <>
-      <Drawer
+      <ResponsiveDrawer
         opened={host !== null}
         onClose={onClose}
         position="right"
         // Wide enough for the container table's own columns — ports and status were being
-        // truncated at 720 on a host with a dozen workloads.
+        // truncated at 720 on a host with a dozen workloads. A phone gets the whole screen.
         size="min(1040px, 92vw)"
-        padding="lg"
+        padding={phone ? "md" : "lg"}
         title={
           host && (
-            <Group gap="sm" wrap="nowrap">
+            <Group gap="sm" wrap={phone ? "wrap" : "nowrap"}>
               <Text fw={700} size="lg" className="mono">
                 {host.label}
               </Text>
@@ -161,7 +180,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                   </Button>
                 )
               ) : (
-              <Group gap="xs">
+              <HostDrawerActions phone={phone}>
                 <Button size="xs" variant="default" leftSection={<IconTerminal2 size={15} />} onClick={() => onOpenTerminal(host.alias)}>
                   Terminal
                 </Button>
@@ -201,9 +220,16 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                     Pause
                   </Button>
                 </Tooltip>
-              </Group>
+              </HostDrawerActions>
               )}
             </Group>
+
+            {!host.paused_by && (
+              <Text size="xs" c="dimmed" className="touch-only" mt={-8}>
+                Check now reads this host's status again; nothing on the server changes. Pause closes its connection and
+                sshfleet makes no new one until you resume it.
+              </Text>
+            )}
 
             {host.paused_by && (
               <Alert color="orange" variant="light" icon={<IconPlayerPause size={16} />} title="Monitoring paused">
@@ -285,7 +311,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                       ))}
                     </Stack>
 
-                    <SimpleGrid cols={2} spacing="md">
+                    <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="md">
                       <Fact label="Uptime" value={fmtUptime(snapshot.uptime_s)} />
                       <Fact label="Runtime" value={snapshot.runtime} />
                       <Fact label="Kernel" value={snapshot.kernel || "—"} />
@@ -311,7 +337,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
 
                     {/* What sshfleet watches on this host, and where to change it. */}
                     <Card withBorder padding="sm" bg="dark.8">
-                      <Group justify="space-between" wrap="nowrap" align="flex-start">
+                      <Group justify="space-between" wrap={phone ? "wrap" : "nowrap"} align="flex-start">
                         <div style={{ minWidth: 0 }}>
                           <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: 0.4 }}>
                             Watching
@@ -327,24 +353,37 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                           </Group>
                         </div>
                         <Group gap={6} wrap="nowrap">
-                          <Tooltip
-                            label={
-                              host.main
-                                ? "In the default log search — click to leave it out"
-                                : "Include this host's workload logs in the default search"
-                            }
-                            multiline
-                            maw={250}
-                          >
-                            <ActionIcon
-                              variant="subtle"
+                          {noHover ? (
+                            // No tooltip to explain a bare star on a touch screen: it says what it is.
+                            <Button
+                              size="xs"
+                              variant="light"
                               color={host.main ? "yellow" : "gray"}
-                              aria-label="default log search"
+                              leftSection={host.main ? <IconStarFilled size={14} /> : <IconStar size={14} />}
                               onClick={() => void toggleMain()}
                             >
-                              {host.main ? <IconStarFilled size={16} /> : <IconStar size={16} />}
-                            </ActionIcon>
-                          </Tooltip>
+                              {host.main ? "In the default log search" : "Add to the default log search"}
+                            </Button>
+                          ) : (
+                            <Tooltip
+                              label={
+                                host.main
+                                  ? "In the default log search — click to leave it out"
+                                  : "Include this host's workload logs in the default search"
+                              }
+                              multiline
+                              maw={250}
+                            >
+                              <ActionIcon
+                                variant="subtle"
+                                color={host.main ? "yellow" : "gray"}
+                                aria-label="default log search"
+                                onClick={() => void toggleMain()}
+                              >
+                                {host.main ? <IconStarFilled size={16} /> : <IconStar size={16} />}
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
                           <Tooltip label="Change these on the Settings page">
                             <ActionIcon
                               variant="default"
@@ -364,6 +403,97 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
               <Tabs.Panel value="containers" pt="md">
                 {!snapshot || (snapshot.containers.length === 0 && snapshot.missing_containers.length === 0 && snapshot.vanished_containers.length === 0) ? (
                   <EmptyState title={snapshot?.runtime === "none" ? "No container runtime on this host" : "No containers"} />
+                ) : compact ? (
+                  <Stack gap="sm">
+                    {snapshot.containers.map((c) => (
+                      <DataCard key={c.name} style={{ opacity: c.state === "running" ? 1 : 0.75 }}>
+                        <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                          <Box miw={0}>
+                            <Text size="sm" className="mono" fw={600} style={{ overflowWrap: "anywhere" }}>
+                              {c.name}
+                            </Text>
+                            <Text size="xs" c="dimmed" className="mono" style={{ overflowWrap: "anywhere" }}>
+                              {shortImage(c.image)}
+                            </Text>
+                          </Box>
+                          <ContainerState container={c} />
+                        </Group>
+                        {c.ignored && (
+                          <Text size="xs" c="dimmed" mt={4}>
+                            Ignored: it matches an ignore rule for this host, so it is listed but never alerted on.
+                          </Text>
+                        )}
+                        <Text size="xs" c="dimmed" mt={4}>
+                          {c.status}
+                        </Text>
+                        <Text size="xs" className="mono" c="dimmed" style={{ overflowWrap: "anywhere" }}>
+                          {c.network_mode === "host" ? "host network" : c.ports || "no published ports"}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          <Text span inherit c={c.restart_count ? "yellow.4" : undefined}>
+                            {c.restart_count ? `${c.restart_count} restarts` : "no restarts"}
+                          </Text>
+                          {" · "}log {fmtBytes(c.log_bytes)}
+                        </Text>
+                        <CardActions>
+                          <ContainerActions alias={host.alias} container={c.name} state={c.state} labelled />
+                          <Button
+                            variant="default"
+                            leftSection={<IconFileText size={16} />}
+                            onClick={() => navigate(logsPath({ env: host.env, host: host.alias, container: c.name }), FRESH_LOGS)}
+                          >
+                            Logs
+                          </Button>
+                          <Button
+                            variant="light"
+                            color={production ? "red" : "teal"}
+                            leftSection={<IconRotateClockwise size={16} />}
+                            onClick={() => setRestartTarget(c.name)}
+                          >
+                            {c.state === "running" ? "Restart" : "Start"}
+                          </Button>
+                          {c.state !== "running" && c.state !== "restarting" && c.state !== "paused" && (
+                            <Button variant="outline" color="red" leftSection={<IconTrash size={16} />} onClick={() => setDeleteTarget(c)}>
+                              Remove
+                            </Button>
+                          )}
+                        </CardActions>
+                      </DataCard>
+                    ))}
+                    {snapshot.missing_containers.map((name) => (
+                      <DataCard key={name}>
+                        <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                          <Text size="sm" className="mono" fw={600} c="red.4" style={{ overflowWrap: "anywhere" }}>
+                            {name}
+                          </Text>
+                          <Badge color="red" variant="filled" size="sm">
+                            absent
+                          </Badge>
+                        </Group>
+                        <Text size="xs" c="dimmed" mt={4}>
+                          Expected here; nothing restarts it automatically.
+                        </Text>
+                      </DataCard>
+                    ))}
+                    {snapshot.vanished_containers.map((name) => (
+                      <DataCard key={`gone:${name}`}>
+                        <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                          <Text size="sm" className="mono" fw={600} c="red.4" style={{ overflowWrap: "anywhere" }}>
+                            {name}
+                          </Text>
+                          <Badge color="red" variant="filled" size="sm">
+                            gone
+                          </Badge>
+                        </Group>
+                        <Text size="xs" c="dimmed" mt={4}>
+                          Was on this host and is gone — not stopped, removed.
+                        </Text>
+                        <CardActions>
+                          <IgnoreMenu onIgnore={(scope) => void ignore(host.alias, name, scope)} labelled />
+                        </CardActions>
+                      </DataCard>
+                    ))}
+                  </Stack>
                 ) : (
                   <Table highlightOnHover verticalSpacing="sm">
                     <Table.Thead>
@@ -401,14 +531,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                             </Text>
                           </Table.Td>
                           <Table.Td>
-                            <Badge
-                              color={c.state === "running" ? "teal" : c.state === "restarting" || (c.exit_code ?? 0) !== 0 ? "red" : "gray"}
-                              variant={c.state === "running" ? "light" : "outline"}
-                              size="sm"
-                            >
-                              {c.state}
-                              {c.state !== "running" && c.exit_code !== null && c.exit_code !== 0 ? ` · exit ${c.exit_code}` : ""}
-                            </Badge>
+                            <ContainerState container={c} />
                             <Text size="xs" c="dimmed">
                               {c.status}
                             </Text>
@@ -440,6 +563,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                               <Tooltip label="Search this container's logs">
                                 <ActionIcon
                                   variant="subtle"
+                                  aria-label={`logs of ${c.name}`}
                                   onClick={() => navigate(logsPath({ env: host.env, host: host.alias, container: c.name }), FRESH_LOGS)}
                                 >
                                   <IconFileText size={16} />
@@ -520,34 +644,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                           <Table.Td colSpan={3} />
                           <Table.Td>
                             <Group justify="flex-end">
-                              <Menu position="bottom-end" withinPortal>
-                                <Menu.Target>
-                                  <Button
-                                    size="compact-xs"
-                                    variant="default"
-                                    leftSection={<IconEyeOff size={14} />}
-                                    rightSection={<IconChevronDown size={12} />}
-                                  >
-                                    Ignore
-                                  </Button>
-                                </Menu.Target>
-                                <Menu.Dropdown>
-                                  <Menu.Item onClick={() => void ignore(host.alias, name)}>
-                                    This container
-                                    <Text size="xs" c="dimmed">
-                                      It left on purpose: stop expecting it here.
-                                    </Text>
-                                  </Menu.Item>
-                                  {/* The one that matters for Airbyte and friends: they invent a
-                                      name per run, so ignoring this one silences nothing. */}
-                                  <Menu.Item onClick={() => void ignore(host.alias, name, "family")}>
-                                    Every container named like it
-                                    <Text size="xs" c="dimmed">
-                                      For a scheduler that names a container per job run.
-                                    </Text>
-                                  </Menu.Item>
-                                </Menu.Dropdown>
-                              </Menu>
+                              <IgnoreMenu onIgnore={(scope) => void ignore(host.alias, name, scope)} />
                             </Group>
                           </Table.Td>
                         </Table.Tr>
@@ -574,7 +671,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
             </Tabs>
           </Stack>
         )}
-      </Drawer>
+      </ResponsiveDrawer>
       {host && <RestartModal alias={host.alias} container={restartTarget} onClose={() => setRestartTarget(null)} />}
       {host && <DeleteContainerModal alias={host.alias} env={host.env} container={deleteTarget} onClose={() => setDeleteTarget(null)} />}
     </>
@@ -591,5 +688,65 @@ function Fact({ label, value, bad }: { label: string; value: string; bad?: boole
         {value}
       </Text>
     </Stack>
+  );
+}
+
+/** The action row under the host's name: a wrapping row of small buttons, or on a phone a grid
+ *  of three to a line that a thumb can hit. */
+function HostDrawerActions({ phone, children }: { phone: boolean; children: ReactNode }) {
+  return phone ? (
+    <SimpleGrid cols={3} spacing={6} w="100%">
+      {children}
+    </SimpleGrid>
+  ) : (
+    <Group gap="xs">{children}</Group>
+  );
+}
+
+function ContainerState({ container: c }: { container: Container }) {
+  return (
+    <Badge
+      color={c.state === "running" ? "teal" : c.state === "restarting" || (c.exit_code ?? 0) !== 0 ? "red" : "gray"}
+      variant={c.state === "running" ? "light" : "outline"}
+      size="sm"
+      style={{ flexShrink: 0 }}
+    >
+      {c.state}
+      {c.state !== "running" && c.exit_code !== null && c.exit_code !== 0 ? ` · exit ${c.exit_code}` : ""}
+    </Badge>
+  );
+}
+
+/** Stop expecting a container that left: this one, or every one named like it. */
+function IgnoreMenu({ onIgnore, labelled = false }: { onIgnore: (scope: "name" | "family") => void; labelled?: boolean }) {
+  return (
+    <Menu position="bottom-end" withinPortal>
+      <Menu.Target>
+        <Button
+          size={labelled ? "sm" : "compact-xs"}
+          variant="default"
+          leftSection={<IconEyeOff size={14} />}
+          rightSection={<IconChevronDown size={12} />}
+        >
+          Ignore
+        </Button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item onClick={() => onIgnore("name")}>
+          This container
+          <Text size="xs" c="dimmed">
+            It left on purpose: stop expecting it here.
+          </Text>
+        </Menu.Item>
+        {/* The one that matters for Airbyte and friends: they invent a name per run, so ignoring
+            this one silences nothing. */}
+        <Menu.Item onClick={() => onIgnore("family")}>
+          Every container named like it
+          <Text size="xs" c="dimmed">
+            For a scheduler that names a container per job run.
+          </Text>
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 }

@@ -1,10 +1,11 @@
-import { Badge, Box, CloseButton, Group, Progress, Text, TextInput, Tooltip, type MantineColor, type TextInputProps } from "@mantine/core";
+import { Badge, Box, CloseButton, Group, Progress, Text, TextInput, type MantineColor, type TextInputProps } from "@mantine/core";
 import { IconPlayerPause, IconSearch } from "@tabler/icons-react";
 import { useRef, type ReactNode } from "react";
 
 import type { Environment, Host } from "../api/types";
 import { pauseReason } from "../lib/pause";
 import { envColor, severityColor } from "../theme";
+import { InfoTip } from "./responsive";
 
 export function EnvBadge({ env, environments, size = "sm" }: { env: string; environments?: Environment[]; size?: string }) {
   const meta = environments?.find((e) => e.name === env);
@@ -44,14 +45,14 @@ export function ReachStatus({ host }: { host: Host }) {
   const snapshot = host.snapshot;
   if (host.paused_by) {
     return (
-      <Tooltip label={pauseReason(host)} multiline maw={300}>
+      <InfoTip label={pauseReason(host)} multiline maw={300}>
         <Group gap={6} wrap="nowrap">
           <IconPlayerPause size={12} color="var(--mantine-color-orange-5)" />
           <Text size="sm" c="orange.4" style={{ whiteSpace: "nowrap" }}>
             paused
           </Text>
         </Group>
-      </Tooltip>
+      </InfoTip>
     );
   }
   if (!snapshot) {
@@ -66,14 +67,14 @@ export function ReachStatus({ host }: { host: Host }) {
   }
   if (!snapshot.reachable) {
     return (
-      <Tooltip label={snapshot.error?.message ?? "unreachable"} multiline maw={360}>
+      <InfoTip label={snapshot.error?.message ?? "unreachable"} multiline maw={360}>
         <Group gap={6} wrap="nowrap">
           <Box w={8} h={8} style={{ borderRadius: 4, background: "var(--mantine-color-red-6)" }} />
           <Text size="sm" c="red.4" fw={600} style={{ whiteSpace: "nowrap" }}>
             {snapshot.error?.kind === "bastion_down" ? "bastion down" : "unreachable"}
           </Text>
         </Group>
-      </Tooltip>
+      </InfoTip>
     );
   }
   const stale = host.stale;
