@@ -20,3 +20,6 @@ web/node_modules/.tmp/
 
 # private patterns for scripts/check-secrets.sh
 .check-secrets.local
+
+# private launch notes: kept on this machine, never committed
+docs/launch-plan.md
