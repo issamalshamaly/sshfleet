@@ -180,6 +180,28 @@ The state is checked on the host right before the command, so a container that h
 the meantime is left alone. The interface never offers stop, kill or prune — there are no such
 routes on the server either.
 
+### On a phone or a tablet
+
+Every page works on a phone and a tablet as well as on a desktop. A phone gets a tab bar along
+the bottom (Fleet, Logs, Files, Alerts, More) and a button in the header for the project and
+environment in view; hosts, containers, tunnels and audit entries are cards; Logs shows the query
+or the results and switches between them; forms and panels take the whole screen. A tablet held
+upright opens the sidebar from a menu button, and from 992px wide the layout is the desktop's.
+On a touch screen a shell has a key bar for what a phone keyboard lacks (Esc, Tab, Ctrl, the
+arrows, PgUp/PgDn, paste), anything a tooltip says opens with a tap, and the exact command
+behind a quick action is shown above its Run button.
+
+The server still listens on `127.0.0.1` only. To reach it from a phone or tablet, forward the
+port over SSH from the device, for example with Termux on Android or Blink on iOS, to the
+computer running sshfleet:
+
+```bash
+ssh -L 8765:127.0.0.1:8765 you@your-computer
+```
+
+then open `http://127.0.0.1:8765` in the device's browser. The page carries its token as it
+always does, and nothing on the computer has to listen beyond localhost.
+
 ## Starting and stopping
 
 `sshfleet web` runs in the foreground and prints the address it is serving. **Ctrl+C** in that

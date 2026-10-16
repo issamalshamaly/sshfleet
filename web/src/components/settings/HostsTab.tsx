@@ -716,7 +716,8 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
                   <Table.Tr key={host.alias}>
                     <Table.Td>
                       <Group gap={6} wrap="nowrap">
-                        <Text size="sm" fw={600} className="mono">
+                        {/* One line: broken at its hyphens an alias reads as two. The table scrolls instead. */}
+                        <Text size="sm" fw={600} className="mono" style={{ whiteSpace: "nowrap" }}>
                           {host.alias}
                         </Text>
                         {host.paused_by && (

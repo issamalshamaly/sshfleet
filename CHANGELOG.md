@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Phones and tablets
+
+* The whole web interface works on phones and tablets. Below 768px the sidebar, which used to
+  cover every page, gives way to a tab bar (Fleet, Logs, Files, Alerts, More) and a header button
+  for the project and environment; a tablet held upright opens the sidebar from a burger; from
+  992px the layout is the desktop's, unchanged.
+* Fleet hosts, a host's containers, tunnels, audit entries, the hosts in Settings and the
+  configuration history are cards on a phone, with what the table's tooltips held written out
+  and their buttons labelled. Fleet is two columns of cards on an upright tablet.
+* Logs shows the query or the results below 992px, both kept as they were while you switch, and
+  a phone puts each line's source and time above its text. Files keeps the name readable at any
+  width; on a phone a file opens a sheet with its details, Preview and Download.
+* A shell on a touch screen has a key bar (Esc, Tab, sticky Ctrl, arrows, Home/End, PgUp/PgDn,
+  paste) and takes the part of the screen the keyboard leaves. Leaving the page while a shell
+  runs asks first on a touch screen.
+* Quick actions on a touch screen show each exact command above its Run button. Tooltips open
+  with a tap. Forms and panels fill a phone with their buttons pinned at the bottom; targets are
+  at least 40px on a touch screen; fields no longer auto-capitalise or auto-correct.
+* Turning the device or resizing the window keeps every page as it was: filters, the Logs pane
+  and line, the Files position, a running shell.
+* The README explains how to reach sshfleet from a phone over `ssh -L`; the server still binds
+  to localhost only.
+
 ### History and restore
 
 * Every state of `config.yaml` and the SSH config files is kept, whoever changed them: this page,
