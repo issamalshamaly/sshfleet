@@ -17,6 +17,7 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
 from sshfleet.web import create_app
+from sshfleet.web.server import WS_IMPLEMENTATION
 
 LINE = "echo hello world this is a pasted line\n"
 
@@ -36,7 +37,7 @@ async def live(context, fake_ssh, monkeypatch, unused_tcp_port):
     )
     app = create_app(context)
     server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=unused_tcp_port, log_level="error", ws="websockets")
+        uvicorn.Config(app, host="127.0.0.1", port=unused_tcp_port, log_level="error", ws=WS_IMPLEMENTATION)
     )
     thread = threading.Thread(target=server.run, daemon=True, name="test-web")
     thread.start()

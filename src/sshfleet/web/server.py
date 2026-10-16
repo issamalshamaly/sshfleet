@@ -28,6 +28,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 #: The server binds 127.0.0.1 only. Starlette cannot match a bracketed IPv6 literal, and nothing
 #: serves on ::1 anyway.
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
+#: The terminal's WebSocket. Named explicitly so an upgrade cannot swap it underneath: plain
+#: "websockets" is uvicorn's wrapper over the library's legacy API, deprecated and due to become
+#: an alias for this one.
+WS_IMPLEMENTATION = "websockets-sansio"
 
 
 def create_app(context: Context | None = None) -> FastAPI:
@@ -94,7 +98,7 @@ def run_web(host: str = "127.0.0.1", port: int = 8765, *, open_browser: bool = T
 
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     print(f"sshfleet web interface: {url}")
-    uvicorn.run(app, host=host, port=port, log_level="warning", ws="websockets", timeout_graceful_shutdown=2)
+    uvicorn.run(app, host=host, port=port, log_level="warning", ws=WS_IMPLEMENTATION, timeout_graceful_shutdown=2)
 
 
 def _start_background_server(port: int, context: Context | None):
@@ -103,7 +107,7 @@ def _start_background_server(port: int, context: Context | None):
     import uvicorn
 
     app = create_app(context)
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", ws="websockets"))
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", ws=WS_IMPLEMENTATION))
     thread = threading.Thread(target=server.run, daemon=True, name="sshfleet-web")
     thread.start()
     return server
