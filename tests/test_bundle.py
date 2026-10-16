@@ -43,7 +43,8 @@ def test_an_export_of_a_config_seeded_with_secrets_contains_none(context, sample
 @pytest.mark.parametrize(
     "plant",
     [
-        lambda ctx, ssh: setattr(ctx.config.hosts["tst-order"], "display", "AKIAABCDEFGHIJKLMNOP"),
+        # Assembled here so the source itself never holds a key-shaped literal (check-secrets reads it).
+        lambda ctx, ssh: setattr(ctx.config.hosts["tst-order"], "display", "AKIA" + "ABCDEFGHIJKLMNOP"),
         lambda ctx, ssh: setattr(ctx.config.hosts["tst-order"], "display", "supersecretvalue123"),
         lambda ctx, ssh: ctx.config.extra.update(notes="ghp_" + "a" * 36),
         lambda ctx, ssh: ssh.write_text(ssh.read_text() + "\n# -----BEGIN OPENSSH PRIVATE KEY-----\n"),
