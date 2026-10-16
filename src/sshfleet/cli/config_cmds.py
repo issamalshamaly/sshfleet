@@ -5,11 +5,13 @@ from __future__ import annotations
 import calendar
 import time
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.syntax import Syntax
 
+from ..bundle import BundleError, build, to_json, write_dir
 from ..config import loader as config_loader
 from ..context import build_context
 from ..history import (
@@ -25,9 +27,12 @@ from ..history import (
     tracked_files,
     with_content,
 )
-from .output import Exit, console, emit_json, fail, info, table
+from .output import Exit, console, emit_json, fail, info, table, warn
 
-app = typer.Typer(help="The configuration's history: list it, compare states, put one back.", no_args_is_help=True)
+app = typer.Typer(
+    help="The configuration's history (list, compare, restore) and bundles to move or share it (export, import).",
+    no_args_is_help=True,
+)
 
 #: Who caused a state, in words. "disk" and "watcher" are both a hand edit, noticed by the CLI or
 #: by the server.
@@ -217,3 +222,54 @@ def restore(
     console.print(f"[green]restored[/green] {target.code}: {len(written)} file(s) written. A running server picks it up within seconds.")
     if before:
         console.print(f"Undo with [bold]sshfleet config restore {before.code}[/bold]")
+
+
+@app.command("export")
+def export(
+    out: Annotated[str, typer.Option("--out", "-o", help="A .json file, a folder (for git), or - for standard output.")] = "-",
+    project: Annotated[list[str] | None, typer.Option("--project", help="Only this project (repeatable).")] = None,
+    env: Annotated[list[str] | None, typer.Option("--env", help="Only this environment (repeatable).")] = None,
+    with_local: Annotated[bool, typer.Option("--with-local", help="Also carry this machine's key paths, file paths and pauses.")] = False,
+    allow_commands: Annotated[bool, typer.Option("--allow-commands", help="Carry SSH lines that run programs (ProxyCommand, Include, …).")] = False,
+) -> None:
+    """Write the setup as a bundle: to move it to another machine, or to share it through git.
+
+    Keys, key paths and anything that looks like a credential stay behind; the export is refused
+    if a secret would still be in it.
+    """
+    context = build_context(write_ssh_config=False)
+    try:
+        bundle, warnings = build(
+            context.config,
+            context.inventory,
+            context.paths,
+            projects=project or None,
+            environments=env or None,
+            with_local=with_local,
+            allow_commands=allow_commands,
+        )
+    except BundleError as exc:
+        fail(str(exc))
+        context.audit.append("config.export", status="denied", note=f"cli; {str(exc)[:300]}")
+        raise typer.Exit(Exit.FAILED) from exc
+    for message in warnings:
+        warn(message)
+    environments = len(bundle["fleet"].get("environments") or [])
+    if out == "-":
+        typer.echo(to_json(bundle).decode(), nl=False)
+        target = "standard output"
+    elif out.endswith(".json"):
+        path = Path(out).expanduser()
+        path.write_bytes(to_json(bundle))
+        path.chmod(0o600 if with_local else 0o644)
+        target = str(path)
+    else:
+        try:
+            write_dir(bundle, Path(out).expanduser())
+        except BundleError as exc:
+            fail(str(exc))
+            raise typer.Exit(Exit.USAGE) from exc
+        target = str(Path(out).expanduser())
+    context.audit.append("config.export", target=", ".join((project or []) + (env or [])) or "everything", status="ok", note=f"cli; {target}")
+    if out != "-":
+        console.print(f"[green]exported[/green] {environments} environment(s) to {target}")
