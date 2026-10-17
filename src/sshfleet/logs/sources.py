@@ -9,8 +9,6 @@ last lines are usually the reason it stopped.
 
 from __future__ import annotations
 
-from os.path import commonprefix
-
 from ..containers.names import check_container_name
 from ..inventory import Host, Inventory
 from .model import LogFormat, LogSource, SourceKind
@@ -25,6 +23,16 @@ def _format(name: str | None) -> LogFormat:
         return LogFormat.AUTO
 
 
+def _shared_prefix(names: list[str]) -> str:
+    """What every name starts with, letter by letter. These are container names, not paths, so
+    ``os.path.commonpath`` would be wrong: ``order-api`` and ``order-web`` share ``order-``."""
+    first, last = min(names), max(names)
+    size = 0
+    while size < min(len(first), len(last)) and first[size] == last[size]:
+        size += 1
+    return first[:size]
+
+
 def label_for(host: Host, workload: str | None = None, siblings: list[str] | None = None) -> str:
     """A short tag for merged output: the host's label, plus what tells this workload apart.
 
@@ -35,7 +43,7 @@ def label_for(host: Host, workload: str | None = None, siblings: list[str] | Non
     others = sorted(siblings or [])
     if not workload or len(others) < 2:
         return base
-    shared = commonprefix(others)
+    shared = _shared_prefix(others)
     tail = workload[len(shared) :].strip("-_.") or workload
     same = [name for name in others if (name[len(shared) :].strip("-_.") or name) == tail]
     if len(same) > 1:
