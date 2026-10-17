@@ -1,80 +1,53 @@
 # sshfleet
 
-One tool for a fleet of servers you reach over SSH: see every host at a glance, look inside a
-host, restart a container safely, move files, open a shell, and search several services' logs in
-the same time window.
+[![ci](https://github.com/issamalshamaly/sshfleet/actions/workflows/ci.yml/badge.svg)](https://github.com/issamalshamaly/sshfleet/actions/workflows/ci.yml)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 
-It drives the `ssh` you already have. Your SSH config files are the inventory: sshfleet writes a
-config of its own that includes them (and your `~/.ssh/config` too, if you set
-`ssh.include_user_config`). The tool never opens a private key — authentication stays entirely
-with OpenSSH. What runs on a host is
-discovered from its container runtime rather than described in a file, so there is no catalogue
-to keep in step with reality.
+**A web console on your own computer for the servers you already reach over SSH.** Every host at
+a glance, a container restarted and checked until it is really back, several services' logs
+searched in one time window, files, tunnels and a shell, all through the `ssh` you already have.
+Nothing is installed on the servers, nothing listens beyond your machine, and no key is ever read.
 
-```
-sshfleet demo                  # try it on a made-up fleet: no servers, nothing of yours touched
-sshfleet web                   # the web interface, opens in your browser
-sshfleet desktop               # the same interface in its own window
-sshfleet fleet --env staging   # same data as a table, for scripts
-sshfleet logs search --env production --main --since 30m --pattern 'error|timeout' -B 60 --download
-```
+![sshfleet on its demo fleet: the fleet with its alerts, a bastion going down and coming back, a container restarted and verified, a search across three services](docs/images/demo.gif)
 
-## Install
+## Who it is for
 
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/). The web interface ships prebuilt, so no
-Node is required to run it.
+Whoever looks after a few dozen Linux servers by hand: services in plain docker or podman
+containers, a bastion or two in front, and SSH config files that already describe the fleet.
+Those files are the inventory. What runs on a host is discovered from its container runtime, so
+there is nothing to describe and keep in step.
 
-It runs on Linux, where it is tested, and should run on macOS, which is not yet tested. The
-servers it watches are Linux hosts running docker, podman, or no container runtime at all.
+It is not a monitoring stack (no metric history, no dashboards to build) and not an
+orchestrator: it deploys nothing and stops nothing. The one change it makes to a running
+container is a restart, in place.
+
+## Try it in a minute
 
 ```bash
-uv tool install sshfleet        # from PyPI, as a command on your PATH
-# or, from a checkout:
-uv sync && uv run sshfleet --help
+uv tool install sshfleet        # or: pipx install sshfleet
+sshfleet demo
 ```
 
-## First run
+The real interface on a made-up fleet of twelve hosts, with alerts to look at, a container to
+restart, logs to search and files to browse. Nothing of yours is read and nothing leaves your
+machine: a stand-in for `ssh` answers in place of the servers. `--scenario bastion_down` shows a
+bastion that died; `--story` walks through healthy, degraded and a bastion down on a loop.
 
-To see it before pointing it at anything of yours, `sshfleet demo` runs the real interface on a
-made-up fleet of twelve hosts: alerts, a container to restart, logs to search, files to browse.
-Nothing leaves your machine and nothing of yours is read; `--scenario bastion_down` shows what a
-dead bastion looks like, and `--story` walks through healthy, degraded and a bastion down on a
-loop.
-
-For your own fleet, start the interface and open **Settings**:
+## Your fleet in five minutes
 
 ```bash
 sshfleet web
 ```
 
-Create a **project** first. A project is the outermost thing sshfleet knows about — typically one
-per system you run, with its staging and production inside it — and every environment belongs to
-exactly one. It carries no behaviour: nothing about how a host is reached or what is watched on it
-comes from a project, it only says what belongs with what.
+The interface opens in your browser. In **Settings**, create a project, then an environment:
+point it at an SSH config file that already lists your servers (say `~/.ssh/config.d/production`)
+and it shows the hosts, the bastions it found in `ProxyJump` and which hosts have no key, before
+anything is saved. **Test** opens the bastion and one host behind it. Or start from an empty
+file and add servers one by one; they are written as plain OpenSSH stanzas that `ssh <alias>`
+uses too.
 
-Then add an environment to it. Two ways:
-
-* **Use an existing SSH config file.** Point at the file that already lists the servers, say
-  `~/.ssh/config.d/production`. The page parses it straight away — how many hosts, the alias
-  prefix, the bastions it found in `ProxyJump`, which hosts have no `IdentityFile` — and suggests a
-  name and colour.
-* **Start empty.** Give it a name and sshfleet creates a private, empty file for it at
-  `~/.ssh/config.d/<project>_<short label>` (say `acme_prod`), in plain OpenSSH syntax. Then add
-  servers one by one on the **Hosts** tab (each alias starts with `<project>_<short label>_`, so
-  `acme_prod_web` never collides with another project's `web`):
-  alias, address, user, the jump host it sits behind. Every server is written into that file, so
-  it stays yours and works with plain `ssh` too.
-
-Either way, record the identity file the environment uses. Its path is stored and its permissions
-are checked with `stat`; the key itself is never read. **Test** opens the bastion connection and
-one host behind it so you know it works before you leave the page.
-
-Plain `ssh <alias>` in a terminal only reads files under `~/.ssh/config.d/` through an `Include`
-line in your own `~/.ssh/config`. sshfleet does not need that line (it drives ssh with its own
-generated config), but the Environments tab notices when it is missing and offers a button that
-adds it — with a backup of the file first, and never on its own.
-
-The same can be done from the command line:
+The same from a terminal:
 
 ```bash
 sshfleet project add acme
@@ -83,390 +56,35 @@ sshfleet env add --name production --ssh-config ~/.ssh/config.d/production \
 sshfleet doctor
 ```
 
-## What sshfleet knows about a host
-
-Out of the box it knows nothing about your fleet, and it does not need to. Every host is shown
-with its load, memory, disks and whatever its container runtime reports — `docker ps -a` or
-`podman ps -a`, discovered per host. There is no catalogue to keep in step with reality.
-
-What you may add, per host, is what you want watched:
-
-```yaml
-# ~/.config/sshfleet/config.yaml
-hosts:
-  prod-api:
-    role: service          # service | gateway | frontend | data | ops
-    main: true             # its running workloads are what the Logs page searches by default
-    label: api             # short tag in merged log output
-    workloads: "api-*"     # only look at these; empty means everything the host reports
-    health: {port: 3000, path: /health, min_interval_s: 0}
-    log_format: pino_pretty          # auto-detected when absent
-    log_sources:                     # extra files, on the host or inside a workload
-      - {path: /var/log/api/worker.log, format: plain, rotated_glob: "worker.log.*"}
-    expected_count: 3      # alert when fewer are present; without it there is no count rule
-    ignored_containers: [old-worker, "destination-*"]  # never alert on these; globs allowed
-    runtime: podman        # probed on the host when absent
-    sudo: false
-    web_root: /var/www/html          # frontends only
-```
-
-All of it is editable on the Settings page and in the host panel, so the file is where it lands,
-not where you work.
-
-Five rules are worth knowing, because everything else follows from them:
-
-* **`workloads` is a visibility filter and nothing else.** It scopes what is listed, counted,
-  probed and searched, all alike. Leave it out and the host is watched whole.
-* **`expected_count` is the only count rule.** Set it and sshfleet alerts when fewer workloads are
-  present; leave it out and it never invents a number. Counting is about existence, not health:
-  `ps -a` lists a stopped workload, so it still counts, and being stopped is its own alert.
-* **A workload that settles in and then leaves `ps -a` is reported as gone.** Settling in means
-  being seen running on two sweeps in a row: anything that comes and goes inside one refresh
-  interval was a job, and a job that ends is not a loss. One that was already stopped when it went
-  is housekeeping, not news. The report lasts `thresholds.vanished_memory_s` (six hours by
-  default) — long enough to see it, short enough that a finished job does not become a permanent
-  alarm. `expected_count` is the durable contract; this is the heuristic that notices a change.
-* **`ignored_containers` silences, it does not hide.** Each entry is a name glob; a workload that
-  matches one raises no alert of any kind and is left out of the count, while staying listed and
-  searchable with an "ignored" mark beside it. This is what a job runner needs: Airbyte and its
-  like start a container per task and give each one a fresh name
-  (`destination-postgres-write-43138-0-nxulk`), so the run outlives a refresh, settles in and is
-  reported as gone when it finishes — every time. Ignore `destination-*`, not the one name you
-  can see. In the host panel, the Ignore button on a workload that left offers exactly that.
-* **The star means stdout.** It puts a host's running workload logs into the default search;
-  its files, nginx logs and journal stay a click away under "Pick hosts & containers".
-
-The interface reads the same way round. The sidebar picks the project first, then all of its
-environments or one of them, and every page — fleet, logs, files, tunnels — is scoped to that
-choice, Settings included — which is why choosing one never navigates away from where you are. In
-Settings, a project opens a panel holding its environments: that is where one is added,
-tested, edited or removed, because a project is the only place they are looked at as a set.
-
-## The web interface
-
-`sshfleet web` starts a local server on `127.0.0.1:8765` and opens the interface in your browser.
-`sshfleet desktop` shows the same pages in a window of their own: pywebview when it has a GUI
-backend (on Linux that means GTK or Qt Python bindings, e.g. `pip install pywebview[qt]`),
-otherwise a Chromium-family browser in app mode, otherwise any browser. If `sshfleet web` is
-already running, the window opens onto it. Nothing listens on the network: the server binds to
-localhost only.
-
-The page is only served to a browser you have let in. `sshfleet web` opens it through a link that
-works once, within ten minutes, and the browser keeps a cookie from it; another user or program
-on the same computer that asks for the page gets a note saying how to get in. Every request from
-the page carries a token in a header, so a page from any other origin cannot talk to the server
-either. A bookmark keeps working, across restarts too. To let in another browser, run
-`sshfleet web` again, or `sshfleet web --no-open` for a link to paste. Deleting
-`~/.local/state/sshfleet/web-session.json` signs every browser out at the next start.
-
-Pages:
-
-* **Fleet** — every host with load, memory, disk, containers and health, updating row by row as
-  the refresh sweeps the fleet. Filter by environment, role or text; sort alerts first; ⌘K jumps
-  to a host. Click a row for the host panel: metrics, facts, containers with **Logs** and
-  **Restart** actions, and the host's alerts.
-* **Logs** — pick an environment and either the starred hosts (click one to leave it out) or any
-  hosts and containers, type a pattern, choose lines of context and a time window, and search all
-  of them at once. Results stream in as one merged timeline with per-service counters; **Follow**
-  tails live; **Download bundle** saves per-service files, a merged log and a manifest. **Max
-  lines** and **Max size** cap what each service may return, newest first, so an hour of a busy
-  service stays fast; a service that hit the cap is marked so you know the window was not fully
-  covered.
-* **Files** — browse a host, preview or download a file, drag a file in to upload it. Secret files
-  are shown but marked protected and cannot be fetched.
-* **Sites** — the domains a host serves, read out of nginx, Apache, Caddy, Traefik or HAProxy's
-  own configuration rather than declared anywhere. A globe beside the host's row lists them and
-  opens one in a new tab. Only `server_name` and its port are read; a catch-all, a bare IP, a
-  localhost or a name with a variable in it is not an address and is left out, and the port-80
-  block that only redirects to https is not a second site. It costs about 15ms on the host, so it
-  runs when a host is first seen and whenever you ask for a check by hand — never on the timer.
-* **Terminal** — a real shell in the browser over the shared connection, from the host panel or at
-  `/terminal/<alias>`. Minimise it and the shell keeps running while you go elsewhere: the host's
-  terminal icon turns green to say one is open there, and a counter in the header lists every open
-  shell from any page. Either brings it back where you left it. Closing is a separate button, and
-  the only thing that ends the shell.
-* **Tunnels** — define a port forward (Kibana, Elasticsearch, Seq, Grafana and Postgres are one
-  click) and switch it on and off. It rides the connection that is already open, so opening one
-  costs nothing.
-* **Audit** — everything the tool changed, newest first, in plain words.
-* **Settings** — environments, servers, health checks, how often everything is checked, and
-  which sounds to play.
-
-A restart on an environment whose name contains "prod" asks you to type the container name. A
-container that is **already stopped** can be removed: you type its name on every environment,
-and its last log lines are saved to the downloads folder first, because the log goes with it.
-The state is checked on the host right before the command, so a container that has started in
-the meantime is left alone. The interface never offers stop, kill or prune — there are no such
-routes on the server either.
-
-### On a phone or a tablet
-
-Every page works on a phone and a tablet as well as on a desktop. A phone gets a tab bar along
-the bottom (Fleet, Logs, Files, Alerts, More) and a button in the header for the project and
-environment in view; hosts, containers, tunnels and audit entries are cards; Logs shows the query
-or the results and switches between them; forms and panels take the whole screen. A tablet held
-upright opens the sidebar from a menu button, and from 992px wide the layout is the desktop's.
-On a touch screen a shell has a key bar for what a phone keyboard lacks (Esc, Tab, Ctrl, the
-arrows, PgUp/PgDn, paste), anything a tooltip says opens with a tap, and the exact command
-behind a quick action is shown above its Run button.
-
-The server still listens on `127.0.0.1` only. To reach it from a phone or tablet, forward the
-port over SSH from the device, for example with Termux on Android or Blink on iOS, to the
-computer running sshfleet:
-
-```bash
-ssh -L 8765:127.0.0.1:8765 you@your-computer
-```
-
-then, in that same SSH session, run `sshfleet web --no-open`: it prints a link that lets one
-browser in. Open it in the device's browser, which stays in afterwards. Nothing on the computer
-has to listen beyond localhost.
-
-## Starting and stopping
-
-`sshfleet web` runs in the foreground and prints the address it is serving. **Ctrl+C** in that
-terminal stops it; shutdown takes about two seconds. Nothing on the servers is affected — the
-fleet view simply stops updating. If you started it detached and have no terminal to interrupt,
-stop it by name or by port:
-
-```bash
-pkill -f "sshfleet web"      # or, on Linux: fuser -k 8765/tcp
-```
-
-Two things deliberately outlive the app. The SSH master connections stay open for ten minutes
-(`ssh.control_persist`) so the next start is instant, and a tunnel you switched on keeps
-forwarding for as long as its connection lives. To end both at once:
-
-```bash
-sshfleet mux stop            # closes the connections and every forward riding on them
-```
-
-Restarting is cheap: the last snapshot of every host is cached on disk, so the table is filled in
-before the first sweep finishes, and with warm connections that sweep takes about a second.
-
-### Running it as a background service
-
-It is not a service by default — you start it when you need it. If you would rather have it always
-running and just open the browser, let the operating system keep it up:
-
-```bash
-sshfleet service install          # starts now and at every login; --port to choose the port
-sshfleet service status           # installed? running? where, since when
-sshfleet service logs -f          # its output: the journal on Linux, a log file on macOS
-sshfleet service stop             # also: start, restart
-sshfleet service uninstall        # stop it and remove the definition
-```
-
-On Linux this writes a systemd **user** unit, `~/.config/systemd/user/sshfleet.service`; on macOS
-a launch agent, `~/Library/LaunchAgents/io.github.issamalshamaly.sshfleet.plist`. Both are plain
-files you can read and edit, both run as you — nothing is installed system-wide — and it binds to
-`127.0.0.1` as always. The definition names the exact Python environment that ran `install`, so
-install from the copy you mean to keep (`uv tool install sshfleet`, not `uvx`) and run `install`
-again if you move it. `--dry-run` prints the definition without writing it; `sshfleet doctor`
-reports the service once there is one.
-
-Three things to know:
-
-* **The port.** If `sshfleet web` is still running in a terminal when you install, the service is
-  registered but not started — two servers cannot share the port. Stop the foreground one and run
-  `sshfleet service start`.
-* **Keys.** A service has no terminal to ask for a passphrase. On Linux it inherits the ssh agent
-  socket only when that agent outlives the login — the desktop keyrings under `$XDG_RUNTIME_DIR`
-  do, a plain `ssh-agent` in `/tmp` does not — and `install` says so when it cannot. Launch agents
-  on macOS get the session's agent.
-* **Logged out.** A user service runs while you are logged in. `sshfleet service install --at-boot`
-  (Linux) turns on lingering so it keeps going; it then polls every host on the configured interval
-  around the clock, so set that interval on the Checks tab with that in mind.
-
-## What a refresh costs the servers
-
-One `ssh` round-trip per host, running a single shell script that reads `/proc`, `df`, the
-container runtime's `ps` and `inspect`, the listening ports and one `curl` against the health
-endpoint. Measured on a two-container host it is about 0.12 CPU-seconds per refresh; on a
-17-container host about 0.4, roughly half of it inside `dockerd`. Two side effects are worth
-knowing: every refresh runs a few `sudo` commands, which each add a line to the host's auth log,
-and a health endpoint that logs every call will see one call per refresh — which is what
-`probe_min_interval_s` is for.
-
-## Settings
-
-**Environments.** Register a file or start empty, as above. Removing an environment only makes
-sshfleet forget it; the SSH config file is not touched.
-
-**Hosts.** The Hosts tab lists every stanza in your SSH config files and lets you add, edit,
-rename or remove one, including which host it connects through — pick a jump host or choose a
-direct connection. What you are about to write is shown as the exact stanza before you save.
-
-Edits are surgical: only the lines of that one stanza are rewritten, so comments, ordering and
-everything else in the file survive byte for byte, and the files stay plain OpenSSH that
-`ssh <alias>` uses without the tool. Before each write a copy of the whole file is saved under
-`~/.local/state/sshfleet/ssh-backups/` — never beside the original, because
-`Include ~/.ssh/config.d/*` would read a stray `.bak` as real configuration. Removing a host
-asks you to type its alias. Display name, label, tags and the health check are kept in
-sshfleet's own config instead, so the SSH file stays clean.
-
-The same form sets the health check for that one host: which port and path to call, and how often
-it may be called at all. Between checks the last answer is kept and shown with its age, and an
-alert raised from an old reading says how old it is.
-
-**Editing the files by hand still works.** The registered files (and anything they `Include`)
-are watched, so a host you add in an editor appears a couple of seconds after you save, without
-restarting anything: the inventory is rebuilt, the new host is checked immediately, and the page
-says what moved. There is a **Reload now** button on the Files tab for when you want it at once.
-
-**Checks.** How often the fleet is polled, from 5 seconds to an hour, or off for manual refreshes
-only. The default is every two minutes. It applies the moment you save — the loop is woken rather
-than left sleeping on the old interval. The same tab holds the connection and status-script
-timeouts, and the disk, memory and load levels that turn a host yellow or red.
-
-**Sounds.** A short sound for a critical alert, a warning, or a finished job, each chosen from a
-few built-in patterns (synthesised in the browser; no audio files), with a mute button in the
-header and an optional desktop notification for critical alerts while the tab is in the
-background. Browsers only allow sound after the page has been clicked once. The choice is saved
-in the config, so it follows you between browsers.
-
-## History, export and import
-
-**Every state is kept.** Whenever `config.yaml` or one of your SSH config files changes, the
-change is recorded under `~/.local/state/sshfleet/history/`. That includes edits made on the
-page, from a command, or in an editor. Settings › **History** lists each state, says who made
-it and what it changed, and shows the diff. Any earlier state can be put back. The state you
-leave is recorded first, so a restore can itself be undone. A restore checks first that the
-result loads, writes only the files that differ, and never deletes anything. A broken hand edit
-is kept too, marked as not loading, so you can see what it was. Unchanged content is stored
-only once, files are private (0600), and a file that looks like a key is never copied.
-
-```
-sshfleet config history                 # newest first, each with a six-character code
-sshfleet config show <code> --diff      # what that state changed
-sshfleet config restore <code>          # put it back (asks for the code; --dry-run to look)
-```
-
-**A whole setup in one file.** Settings › **Export & import**, or `sshfleet config export`,
-writes a bundle of the fleet. It carries the projects, environments, hosts and what is watched
-on them, tunnels, thresholds, and each environment's SSH file. Nothing that belongs to this
-machine goes with it: key paths, `IdentityFile` lines, file paths, interface preferences and
-pauses all stay behind. Settings that look like credentials go out as `<redacted>`. If the
-finished file would still contain a private key, a cloud or chat token, or a value from
-`secrets.env`, nothing is exported and you are told where it is. `--with-local` adds this
-machine's paths, for moving your own setup to another computer.
-
-**Import shows you everything first.** By default it merges: it adds and updates and never
-removes. Where both sides differ it keeps yours unless you choose otherwise, and your keys,
-paths and pauses are left alone. SSH hosts are merged one stanza at a time, so your comments and
-local-only hosts survive. A bundle whose SSH text would run something on your machine
-(`ProxyCommand`, `Include`, `Match … exec`) is refused unless you allow it. An import is undone
-from History like any other change.
-
-**Sharing through git.** A folder form keeps the bundle readable in a diff:
-
-```
-sshfleet config export --out ops/sshfleet/       # manifest.json, fleet.yaml, ssh/<file>
-git add ops/sshfleet && git commit -m "fleet: add the payments hosts"
-# a teammate:
-sshfleet config import ops/sshfleet/ --dry-run   # look first
-sshfleet config import ops/sshfleet/             # then set the key path once, in Settings
-sshfleet config diff ops/sshfleet/               # exit 0 nothing to import, 1 changes, 2 refused
-```
-
-Importing the same bundle again changes nothing, so `config diff` works as a pre-commit check.
-
-**The audit trail** can be filtered and exported from the Audit page, or with
-`sshfleet audit export --since 7d --action 'container.*' [--jsonl]`. In a CSV, a cell that starts
-like a spreadsheet formula is written with a leading quote, so it shows as text.
-
-Each line carries the hash of the one before it, and `sshfleet audit verify` walks the chain: a
-line changed, removed or slipped in is named by file and line. That is evidence rather than
-protection, since whoever can write the file could write a whole new chain; the last link it
-prints, noted somewhere else, shows that too. Past 10 MB the file is set aside as
-`audit.1.jsonl` and a new one started, five of them kept, and the chain carries on across them.
-
-## What it does
-
-**Fleet view.** Every host with load, memory, disk, containers running versus expected, a health
-probe and any alerts. A refresh of 48 hosts takes about a second once connections are warm; the
-first one after a start also opens those connections, so it takes a few seconds more.
-
-```
-env    host           reach                load   mem%   disk%   ctrs   health   up       age   alerts
-prod   prod-api       ●                    0.21   61     71      1/1    200      7d3h     6s
-prod   prod-metrics   ●                    0.00   87     42      1      —        116d1h   6s    MEM, RESTARTS
-prod   prod-portal    ○ timeout connect    —      —      —       —      —        —        6s    UNREACH
-```
-
-Containers are discovered with `ps -a`, so stopped ones are listed too, drawn faded with their
-exit code. A crashed container is an alert; a clean exit of something that was running a moment
-ago is a warning; an init or migration job that finished before the tool first saw the host is
-merely noted.
-
-**Containers.** Per host: image, state, ports, restart count. Restart happens in place and is
-not reported as done until the container is running again and, when the host has a health
-endpoint, has answered it on two checks in a row. Without one, the evidence is that it stayed up
-for five seconds, and the result says exactly that ("verified: running for 5s"). A stopped container can be started again or removed, with its log saved first.
-
-**Logs.** Search one container, one host, or every main service at once. Filtering happens on the
-server, so only matches and their context cross the network. Results from several services are
-merged into one timeline by timestamp, each line tagged with its service.
-
-```bash
-sshfleet logs search --env production --main --since 1h --pattern 'error|timeout' -B 60 --download
-```
-
-`--download` writes a folder with one file per service, a merged `merged.log`, and a
-`manifest.json` recording the window, the pattern, the exact commands and per-service counts.
-
-**Files.** Browse, download and upload. Anything matching `*.env*`, `*.pem`, `*.key`, `id_rsa*`
-and friends is refused — those are the deploy secrets that live next to the application.
-
-**Tunnels.** Port forwards for Kibana, Seq, Elasticsearch, Grafana or a database, opened on the
-connection that is already there. Define them on the Tunnels page or under `tunnels:` in the
-config.
-
-**Shell.** A real shell on any host from the host panel; because the connection is already open
-the prompt appears immediately.
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `sshfleet demo [--scenario] [--story]` | the web interface on a made-up fleet, with no servers |
-| `sshfleet web [--port] [--no-open]` | the web interface |
-| `sshfleet desktop [--port]` | the web interface in its own window |
-| `service install · uninstall · status · start · stop · restart · logs` | the web interface as a background service |
-| `sshfleet` (no subcommand), `sshfleet --version` | help, and the version |
-| `project add · list · rename · remove` | group environments under a project |
-| `env add · list · test · remove · preview` | register and check environments |
-| `fleet [--env] [--main] [--alerts] [--json]` | fleet status as a table |
-| `host <alias>` | one host in detail |
-| `containers <alias>` | containers on a host |
-| `restart <alias> <container>` | restart in place, then verify |
-| `logs search · tail · sources` | search and follow logs |
-| `files ls · get · put · cat` | browse and transfer |
-| `tunnel up · down · status` | port forwards |
-| `ssh <alias> [--tab] [--print]` | open a shell |
-| `mux warm · status · reset · stop` | manage the shared connections |
-| `config history · show · restore` | every earlier state of the configuration, and putting one back |
-| `config export · import · diff` | the setup as a bundle: move it, share it, check it |
-| `audit [export\|verify]` | the audit trail, its export as CSV or JSON Lines, and a check of its chain |
-| `hosts · doctor · version` | inventory, self-check, version |
-
-Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing found,
-`2` usage, `3` partial failure, `4` total failure, `6` results truncated (with `--strict`).
-
-## How it stays fast
-
-* One `ssh_config` of its own that `Include`s yours and turns on `ControlMaster`. OpenSSH passes
-  it down to the `ProxyJump` hop, so the bastion connection is shared too and later commands skip
-  the handshake entirely.
-* One round-trip per host per refresh: a single script that prints one JSON document. It needs no
-  `jq` and no interpreter on the server.
-* Bastions are opened first, then the main services, then everything else. A host whose bastion is
-  down is marked without being contacted, so one dead bastion costs one timeout instead of one per
-  host behind it.
-* Connections open on a short deadline separate from the command deadline, so an unresponsive host
-  cannot set the pace for the whole refresh.
-* Log filtering runs on the server; `--tail` always accompanies `--since` because the Docker log
-  reader scans from the start of the file without it.
+The [guide](docs/guide.md#first-run) has the whole first run, and everything after it.
+
+## What you get
+
+![The fleet: twelve hosts with load, memory, disk, containers and health, alerts first](docs/images/fleet.png)
+
+* **Fleet.** Every host with load, memory, disk, its containers and a health probe, filled in row
+  by row as hosts answer. Alerts come first: a disk filling up, a container that crashed or keeps
+  restarting, a host or a whole bastion that cannot be reached.
+* **Restart that waits to be sure.** A container restarts in place and is not reported as done
+  until it is running again and, when it has a health endpoint, that has answered twice in a
+  row; without one, the result says it stayed up for five seconds, and no more. On production you
+  type its name back first.
+* **Logs from several services in one window.** Pick the starred services or any containers,
+  files and journals, type a pattern, and get one merged timeline with lines of context, filtered
+  on the servers so only what matches crosses the network. Follow it live, or save it as a bundle
+  with a manifest of exactly what was run.
+* **Files, a shell and tunnels.** Browse and preview a host's files (secrets are listed but never
+  fetched), open a real shell in the browser, and switch port forwards to Kibana, Grafana or a
+  database on and off over the connection that is already open.
+* **History you can go back to.** Every state of the configuration and the SSH files is kept, with
+  what changed; any one can be put back. A whole setup exports to one file to share with a
+  teammate or keep in git, with keys and secrets left out.
+* **A record of what was done.** Restarts, copies, shells, searches and settings changes go to an
+  audit trail whose lines are chained, so a line changed later shows.
+* **Every page on a phone too**, over an SSH tunnel to your computer.
+* **A command line for scripts**, with `--json` and exit codes that mean something.
+
+![A search for timeout|ECONNREFUSED across the main services: matches highlighted, one timeline](docs/images/logs.png)
 
 ## Safety
 
@@ -512,91 +130,50 @@ Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing
   The token is accepted in an address only on the two download links and the terminal socket
   (`tests/test_web_session.py`, `tests/test_security.py`).
 
-## Configuration
+[SECURITY.md](SECURITY.md) lists every command sshfleet runs with `sudo` on a server, what it sets
+for every SSH connection and what it leaves to your own files, and how to report a problem.
 
-`~/.config/sshfleet/config.yaml`, written by the Settings page (or `env add`). Besides the
-per-host records above, the useful keys:
+![A restart on production: the name typed back, the command shown, then verified running with the health endpoint answering](docs/images/restart.png)
 
-```yaml
-projects:
-  - {name: acme, color: violet, description: Customer platform}
-environments:
-  - {name: production, ssh_config_path: ~/.ssh/config.d/production, project: acme, short: prod}
-refresh:     {fast_s: 120, connect_timeout_s: 10, collector_timeout_s: 25}
-concurrency: {global: 16, per_bastion: 8}
-thresholds:  {disk_warn_pct: 80, disk_crit_pct: 90, mem_warn_pct: 85, vanished_memory_s: 21600}
-logs:        {default_before: 60, tail_lines: 50000, display_tz: local, allowed_paths: []}
-tunnels:
-  kibana-prod: {env: production, via: prod-kibana, remote: 127.0.0.1:5601, local: 15601,
-                open: "http://127.0.0.1:15601"}
-files:       {download_dir: auto, deny_extra: []}
-ssh:         {strict_host_key_checking: accept-new, control_persist: 10m, include_user_config: false}
-hosts:
-  prod-worker: {display: "worker (rootless)", health: {min_interval_s: 900}, workloads: "worker-*"}
-  slow-box:    {connect_timeout_s: 45}   # a host whose login is slow, not a host that is down
-```
+## How it works
 
-A project is a name, a colour and a note; an environment names the one it belongs to. A file
-written before projects existed, or edited by hand so that an environment names none, is repaired
-when it loads rather than refused: its environments join the first project there is, or a new one
-called `default` that you rename afterwards — renaming carries every environment with it. A
-project has to be empty before it can be removed, so an environment is never left belonging to
-nothing.
+One SSH connection per host, opened through your own `ssh` with `ControlMaster` and shared by
+every page, command and tunnel, the bastion hop included. Each check streams a short script
+through it that prints one JSON document: no agent, no `jq`, no interpreter on the server. On a
+two-container host a check costs about 0.12 CPU-seconds; a fleet of 48 hosts refreshes in about a
+second once the connections are warm, and a dead bastion costs one timeout, not one per host
+behind it. [How it works](docs/how-it-works.md) has the detail, and what happens when your laptop
+sleeps.
 
-`hosts.<alias>.connect_timeout_s` overrides the fleet-wide `refresh.connect_timeout_s` for one
-host. A host can answer perfectly and still take half a minute to let you in — a wedged
-`systemd-logind` makes `pam_systemd` wait out a 25-second D-Bus timeout on every new login — and
-that is not the same thing as being down. When it times out the message says how long it waited,
-so the two are told apart.
+## Why not …
 
-A value of the wrong kind (`fast_s: abc`, `compression: sometimes`) is refused when the file is
-read, with the key it was found under. `ssh.strict_host_key_checking` is `accept-new` (a host's
-key is trusted the first time it is seen) or `yes` (only keys already in `known_hosts`); SECURITY.md
-explains what sshfleet sets for every connection and what it leaves to your SSH files.
+* **Plain `ssh` and a terminal multiplexer.** That is what sshfleet drives, and it keeps working
+  next to it. What it adds is the whole fleet at once, and searches and restarts that do not
+  start with remembering which host runs what.
+* **Portainer, Cockpit.** They run an agent or a service on each server, or need a port opened
+  to them. sshfleet installs nothing on the servers and is reached from your own machine only.
+* **Grafana with exporters, Netdata.** Metric history and dashboards, which sshfleet does not try
+  to be. It is the live view and the hands, not the record; the two go well together, and the
+  Tunnels page opens a Grafana or a Kibana in one click.
+* **Ansible.** It brings servers to a state you describe. sshfleet looks, searches and restarts,
+  and changes nothing else.
+* **k9s, Lens.** For Kubernetes. sshfleet is for the docker and podman hosts that never needed it.
 
-`display_tz` is an IANA name or `local`. `logs.allowed_paths` extends the directories a log
-source may read from (`/var/log`, `/home`, `/opt`, `/srv`, `/usr/src`, `/app`, `/data` by
-default). Everything lives under `~/.config/sshfleet`, `~/.cache/sshfleet` and
-`~/.local/state/sshfleet`; set `SSHFLEET_HOME` to keep it all somewhere else.
+## Platforms
 
-## Extending
+sshfleet runs on Linux, where it is tested, and should run on macOS, which is not yet tested. It
+needs Python 3.12 or newer; the web interface ships prebuilt, so no Node. The servers it watches
+are Linux hosts with bash, coreutils and awk, running docker, podman or no container runtime at
+all; `curl` is used for health checks when it is there.
 
-* **A different stack** needs nothing: its workloads are discovered. Name them with `label`,
-  narrow them with `workloads`, and point `health` at whatever answers.
-* **A file only one host has** goes under `hosts.<alias>.log_sources`.
-* **A new log format** is a parser in `src/sshfleet/logs/parsers.py` plus a `LogFormat` value; a
-  host names it under `log_format`.
-* **Other search backends** (Seq, Elasticsearch) have their `SourceKind` reserved and are the
-  obvious next modules.
+## Documentation
 
-## Development
-
-```bash
-uv sync
-uv run pytest          # the whole suite, no servers required
-uv run ruff check src tests
-```
-
-The web interface is a React + Mantine app in `web/`, built with Vite into
-`src/sshfleet/web/static/`, which the Python server serves. The built files ship with the package,
-so a normal install needs no Node. To change the interface:
-
-```bash
-cd web
-pnpm install
-pnpm dev               # Vite on :5173, proxying /api and /ws to a running `sshfleet web`
-pnpm build             # rebuild src/sshfleet/web/static
-```
-
-The API is FastAPI under `src/sshfleet/web/api/`; streaming endpoints (fleet events, log search,
-follow, restart progress) send newline-delimited JSON, and the terminal is a WebSocket bridging a
-pty. `tests/test_web_api.py` drives the whole app in-process against the same ssh shim.
-
-The suite replaces `ssh` with a shim that replays recorded fixtures, so connection failures,
-missing containers, podman hosts and dead bastions are all exercised offline. The collector script
-is tested by running it under `bash` against fake `docker`, `podman`, `sudo` and `curl`. The host
-records the suite runs against live in `tests/conftest.py`. See `CONTRIBUTING.md`.
+* [Guide](docs/guide.md): the first run, every page, settings, history and sharing, running it as
+  a service, every command.
+* [Configuration](docs/configuration.md): `config.yaml`, and extending sshfleet to another stack.
+* [How it works](docs/how-it-works.md): what a check costs, why it is fast, a sleeping laptop.
+* [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 ## Licence
 
-MIT — see `LICENSE`.
+MIT, see [LICENSE](LICENSE).

@@ -34,6 +34,29 @@ uv run sshfleet env add -n testing -c tests/sshconfigs/sample-env --project lab 
 uv run sshfleet web --port 8799            # or: uv run sshfleet fleet
 ```
 
+## Working on the interface and the API
+
+The web interface is a React + Mantine app in `web/`, built with Vite into
+`src/sshfleet/web/static/`, which the Python server serves. The built files ship with the package,
+so a normal install needs no Node. To change the interface:
+
+```bash
+cd web
+pnpm install
+pnpm dev               # Vite on :5173, proxying /api and /ws to a running `sshfleet web`;
+                       # it adds the session token itself (SSHFLEET_DEV_TARGET picks another port)
+pnpm build             # rebuild src/sshfleet/web/static
+```
+
+The API is FastAPI under `src/sshfleet/web/api/`; streaming endpoints (fleet events, log search,
+follow, restart progress) send newline-delimited JSON, and the terminal is a WebSocket bridging a
+pty. `tests/test_web_api.py` drives the whole app in-process against the same ssh shim.
+
+The suite replaces `ssh` with a shim that replays recorded fixtures, so connection failures,
+missing containers, podman hosts and dead bastions are all exercised offline. The collector script
+is tested by running it under `bash` against fake `docker`, `podman`, `sudo` and `curl`. The host
+records the suite runs against live in `tests/conftest.py`.
+
 ## Ground rules that tests enforce
 
 * **No key is ever opened.** Identity files are `stat`-ed only.

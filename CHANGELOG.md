@@ -36,6 +36,13 @@ the sections after the summary say how each part works.
   what you want watched is written on the host — a role, a star for the default log search, a
   short label, an optional workload filter, a health endpoint and any extra log files.
 
+### Documentation
+
+* The README is one page to decide from: what it is and is not, the demo in a minute, a fleet in
+  five, what each page does with pictures from the demo, the safety guarantees with the test
+  behind each, and why one would pick something else. The reference it held is in `docs/`: a
+  guide to every page and command, the configuration, and how it works.
+
 ### Demo
 
 * `sshfleet demo` runs the real interface on a made-up fleet: Acme, an online shop, twelve hosts on
