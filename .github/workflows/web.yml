@@ -1,0 +1,39 @@
+name: web
+
+# Only when the interface or its committed build changes.
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "src/sshfleet/web/static/**", ".github/workflows/web.yml"]
+  pull_request:
+    paths: ["web/**", "src/sshfleet/web/static/**", ".github/workflows/web.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm typecheck
+        working-directory: web
+      - run: pnpm build
+        working-directory: web
+      - name: the committed bundle must match the source
+        run: git diff --exit-code --stat -- src/sshfleet/web/static || (echo "rebuild src/sshfleet/web/static and commit it" && exit 1)
