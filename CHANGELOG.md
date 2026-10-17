@@ -224,6 +224,9 @@ the sections after the summary say how each part works.
   same millisecond no longer overwrite each other's copy. Writes go through a symlink to the real
   file instead of replacing the link, and are flushed to disk before the rename.
 * Two reloads at once could interleave and report one another's changes; they now take turns.
+* Following logs no longer retries for ever. A paused host is let go at once, a container gone
+  for ten minutes and six failed connections in a row are let go too, and each source says so
+  once instead of adding the same error every few seconds.
 * `config.yaml` is checked when it is read: a setting of the wrong kind (`refresh.fast_s: abc`)
   is refused with the key it was found under, instead of failing later, over and over, inside the
   refresh loop. A bare `strict_host_key_checking: yes`, which YAML reads as true, is the `yes`
