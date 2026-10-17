@@ -70,3 +70,15 @@ def test_doctor_names_the_real_cure_for_a_control_path_that_is_too_long(context,
     check = next(c for c in run_checks(context) if c.name == "control dir")
     assert check.level == "warn"
     assert "ssh.control_dir" in check.fix and "chmod" not in check.fix
+
+
+def test_doctor_says_how_host_keys_are_believed():
+    from sshfleet.doctor import host_key_check
+
+    first_use = host_key_check("accept-new")
+    assert first_use.level == "ok" and "first time it is seen" in first_use.detail
+    assert host_key_check("yes").level == "ok"
+    for blind in ("no", "off"):
+        check = host_key_check(blind)
+        assert check.level == "warn" and "any key is accepted" in check.detail
+    assert host_key_check("ask").level == "warn", "BatchMode makes ask fail on every new host"

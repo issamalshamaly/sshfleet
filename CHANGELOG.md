@@ -172,6 +172,10 @@ the sections after the summary say how each part works.
 * A file that holds a private key is never read as SSH configuration, whatever it is called.
 * `secrets.env` is kept inside sshfleet, not put in its environment, which every ssh and every
   terminal session opened from the page inherited — `LD_PRELOAD=…` in it reached them all.
+* SECURITY.md lists every command sshfleet runs with `sudo -n` on a host, says what the generated
+  SSH config sets for every connection and what it leaves to your files (agent forwarding, local
+  commands, `~/.ssh/config`), and how to stop trusting host keys on first use. `sshfleet doctor`
+  says which host-key policy is in effect.
 * The generated SSH config is written line by line, so a key path, SSH file path or environment
   name with a line break in it could add a line of its own, such as a `ProxyCommand` run on this
   machine. Such a value is refused when the config is written, and by the settings page when it
@@ -213,6 +217,10 @@ the sections after the summary say how each part works.
   same millisecond no longer overwrite each other's copy. Writes go through a symlink to the real
   file instead of replacing the link, and are flushed to disk before the rename.
 * Two reloads at once could interleave and report one another's changes; they now take turns.
+* `config.yaml` is checked when it is read: a setting of the wrong kind (`refresh.fast_s: abc`)
+  is refused with the key it was found under, instead of failing later, over and over, inside the
+  refresh loop. A bare `strict_host_key_checking: yes`, which YAML reads as true, is the `yes`
+  OpenSSH expects rather than a `True` that failed every connection.
 * A check still in flight for a host that was removed or paused meanwhile no longer brings it back
   to the fleet page.
 * A refused change to the alert levels no longer stays in the running config until the next save.

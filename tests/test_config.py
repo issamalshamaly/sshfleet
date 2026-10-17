@@ -428,3 +428,54 @@ def test_the_example_ssh_file_reads_as_one_bastion_and_four_hosts():
     inventory = build_inventory(config)
     assert inventory.environment("staging").bastions == ["acme-stg-bastion"]
     assert len(inventory.hosts("staging")) == 5
+
+
+def _parsed(text: str) -> Config:
+    return config_loader.parse_text("version: 2\n" + text)
+
+
+def test_a_setting_of_the_wrong_kind_is_named_when_the_file_is_read():
+    """It used to load as given and fail later: `fast_s: abc` became an endless "refresh failed"."""
+    with pytest.raises(ConfigError, match=r"refresh\.fast_s must be a whole number"):
+        _parsed("refresh:\n  fast_s: abc\n")
+    with pytest.raises(ConfigError, match=r"refresh\.fast_s must be at least 1"):
+        _parsed("refresh:\n  fast_s: 0\n")
+    with pytest.raises(ConfigError, match=r"concurrency\.global must be at least 1"):
+        _parsed("concurrency:\n  global: 0\n")
+    with pytest.raises(ConfigError, match=r"ssh\.compression must be true or false"):
+        _parsed("ssh:\n  compression: sometimes\n")
+    with pytest.raises(ConfigError, match=r"thresholds\.load_per_cpu_warn must be a number"):
+        _parsed("thresholds:\n  load_per_cpu_warn: high\n")
+    with pytest.raises(ConfigError, match=r"files\.deny_extra must be a list"):
+        _parsed("files:\n  deny_extra: '*.secret'\n")
+    with pytest.raises(ConfigError, match=r"ssh must be a mapping"):
+        _parsed("ssh: [1, 2]\n")
+
+
+def test_a_setting_written_loosely_still_means_what_it_says():
+    config = _parsed(
+        "refresh:\n  fast_s: '90'\n"
+        "thresholds:\n  load_per_cpu_warn: '2'\n"
+        "ssh:\n  compression: 'no'\n  control_persist: 600\n"
+        "files:\n  download_dir:\n"
+    )
+    assert config.refresh.fast_s == 90
+    assert config.thresholds.load_per_cpu_warn == 2.0
+    assert config.ssh.compression is False
+    assert config.ssh.control_persist == "600"
+    assert config.files.download_dir == "auto", "a key left empty keeps its default"
+
+
+def test_a_bare_yes_for_host_keys_is_the_word_ssh_expects(tmp_path: Path):
+    """YAML reads a bare `yes` as true; written as `StrictHostKeyChecking True`, every connection
+    would fail. It is what SECURITY.md tells people to write."""
+    config = _parsed("ssh:\n  strict_host_key_checking: yes\n")
+    assert config.ssh.strict_host_key_checking == "yes"
+    assert _parsed("ssh:\n  strict_host_key_checking: Accept-New\n").ssh.strict_host_key_checking == "accept-new"
+    with pytest.raises(ConfigError, match="strict_host_key_checking must be one of"):
+        _parsed("ssh:\n  strict_host_key_checking: maybe\n")
+
+    from sshfleet.ssh import MuxManager
+
+    paths = Paths.detect(tmp_path / "home").ensure()
+    assert "    StrictHostKeyChecking yes\n" in MuxManager(config, paths, None).render_config()

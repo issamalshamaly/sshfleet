@@ -6,6 +6,8 @@ it names key paths and tunnel endpoints even though it never holds secrets.
 
 from __future__ import annotations
 
+import types
+import typing
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -31,17 +33,85 @@ from .schema import (
     TunnelCfg,
 )
 
+#: What OpenSSH takes for StrictHostKeyChecking.
+HOST_KEY_POLICIES = ("yes", "no", "ask", "accept-new", "off")
 
-def _fill(cls: type, raw: dict[str, Any], rename: dict[str, str] | None = None) -> Any:
-    """Build a simple dataclass from a dict, ignoring unknown keys."""
+
+def _fill(cls: type, raw: Any, section: str, rename: dict[str, str] | None = None, *, minimum: int = 0) -> Any:
+    """Build a simple dataclass from a dict, each value checked against its field's type.
+
+    Unknown keys are ignored and a key left empty keeps its default. A value of the wrong kind is a
+    ConfigError naming the key: unchecked, ``refresh.fast_s: "abc"`` loaded as a string and failed
+    later, inside the refresh loop, as an endless "refresh failed". Whole numbers are at least
+    ``minimum``.
+    """
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{section} must be a mapping of settings, not {type(raw).__name__}")
     rename = rename or {}
-    fields = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
+    hints = typing.get_type_hints(cls)
     kwargs = {}
     for key, value in raw.items():
         target = rename.get(key, key)
-        if target in fields:
-            kwargs[target] = value
+        if target in hints and value is not None:
+            kwargs[target] = _coerce(value, hints[target], f"{section}.{key}", minimum)
     return cls(**kwargs)
+
+
+def _coerce(value: Any, hint: Any, where: str, minimum: int) -> Any:
+    origin = typing.get_origin(hint)
+    if origin in (typing.Union, types.UnionType):
+        hint = next(arg for arg in typing.get_args(hint) if arg is not type(None))
+        origin = typing.get_origin(hint)
+    if hint is bool:
+        if isinstance(value, bool):
+            return value
+        word = str(value).strip().lower()
+        if word in ("true", "yes", "on"):
+            return True
+        if word in ("false", "no", "off"):
+            return False
+        raise ConfigError(f"{where} must be true or false, not {value!r}")
+    if hint is int:
+        number = value if isinstance(value, int) and not isinstance(value, bool) else None
+        if number is None and isinstance(value, str) and value.strip().isdigit():
+            number = int(value)
+        if number is None:
+            raise ConfigError(f"{where} must be a whole number, not {value!r}")
+        if number < minimum:
+            raise ConfigError(f"{where} must be at least {minimum}, not {number}")
+        return number
+    if hint is float:
+        if isinstance(value, bool):
+            raise ConfigError(f"{where} must be a number, not {value!r}")
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            raise ConfigError(f"{where} must be a number, not {value!r}") from None
+    if hint is str:
+        if isinstance(value, bool):
+            # YAML reads a bare yes/no/on/off as true or false.
+            return "yes" if value else "no"
+        if isinstance(value, (str, int, float)):
+            return str(value)
+        raise ConfigError(f"{where} must be text, not {type(value).__name__}")
+    if origin is list or hint is list:
+        if isinstance(value, list):
+            return value
+        raise ConfigError(f"{where} must be a list")
+    if origin is dict or hint is dict:
+        if isinstance(value, dict):
+            return value
+        raise ConfigError(f"{where} must be a mapping")
+    return value
+
+
+def _ssh(raw: Any) -> SshCfg:
+    ssh: SshCfg = _fill(SshCfg, raw, "ssh")
+    policy = ssh.strict_host_key_checking.strip().lower()
+    if policy not in HOST_KEY_POLICIES:
+        raise ConfigError(f"ssh.strict_host_key_checking must be one of {', '.join(HOST_KEY_POLICIES)}, not {ssh.strict_host_key_checking!r}")
+    ssh.strict_host_key_checking = policy
+    return ssh
 
 
 def load(path: Path) -> Config:
@@ -144,17 +214,18 @@ def load_mapping(raw: dict[str, Any]) -> Config:
         version=int(raw.get("version") or 1),
         projects=projects,
         environments=environments,
-        probes=_fill(ProbesCfg, raw.get("probes") or {}),
-        frontends=_fill(FrontendsCfg, raw.get("frontends") or {}),
+        probes=_fill(ProbesCfg, raw.get("probes") or {}, "probes"),
+        frontends=_fill(FrontendsCfg, raw.get("frontends") or {}, "frontends"),
         hosts=_host_overrides(raw.get("hosts") or {}),
-        refresh=_fill(RefreshCfg, raw.get("refresh") or {}),
-        concurrency=_fill(ConcurrencyCfg, raw.get("concurrency") or {}, {"global": "global_"}),
-        thresholds=_fill(Thresholds, raw.get("thresholds") or {}),
-        ssh=_fill(SshCfg, raw.get("ssh") or {}),
+        # Zero seconds between sweeps, or zero connections at a time, would spin or stall.
+        refresh=_fill(RefreshCfg, raw.get("refresh") or {}, "refresh", minimum=1),
+        concurrency=_fill(ConcurrencyCfg, raw.get("concurrency") or {}, "concurrency", {"global": "global_"}, minimum=1),
+        thresholds=_fill(Thresholds, raw.get("thresholds") or {}, "thresholds"),
+        ssh=_ssh(raw.get("ssh") or {}),
         tunnels={k: TunnelCfg.from_dict(k, v or {}) for k, v in (raw.get("tunnels") or {}).items()},
-        files=_fill(FilesCfg, raw.get("files") or {}),
+        files=_fill(FilesCfg, raw.get("files") or {}, "files"),
         ui=dict(raw.get("ui") or D.DEFAULT_CONFIG["ui"]),
-        logs=_fill(LogsCfg, raw.get("logs") or {}),
+        logs=_fill(LogsCfg, raw.get("logs") or {}, "logs"),
         extra={k: v for k, v in raw.items() if k not in known},
     )
 

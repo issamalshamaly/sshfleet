@@ -508,6 +508,7 @@ tunnels:
   kibana-prod: {env: production, via: prod-kibana, remote: 127.0.0.1:5601, local: 15601,
                 open: "http://127.0.0.1:15601"}
 files:       {download_dir: auto, deny_extra: []}
+ssh:         {strict_host_key_checking: accept-new, control_persist: 10m, include_user_config: false}
 hosts:
   prod-worker: {display: "worker (rootless)", health: {min_interval_s: 900}, workloads: "worker-*"}
   slow-box:    {connect_timeout_s: 45}   # a host whose login is slow, not a host that is down
@@ -525,6 +526,11 @@ host. A host can answer perfectly and still take half a minute to let you in —
 `systemd-logind` makes `pam_systemd` wait out a 25-second D-Bus timeout on every new login — and
 that is not the same thing as being down. When it times out the message says how long it waited,
 so the two are told apart.
+
+A value of the wrong kind (`fast_s: abc`, `compression: sometimes`) is refused when the file is
+read, with the key it was found under. `ssh.strict_host_key_checking` is `accept-new` (a host's
+key is trusted the first time it is seen) or `yes` (only keys already in `known_hosts`); SECURITY.md
+explains what sshfleet sets for every connection and what it leaves to your SSH files.
 
 `display_tz` is an IANA name or `local`. `logs.allowed_paths` extends the directories a log
 source may read from (`/var/log`, `/home`, `/opt`, `/srv`, `/usr/src`, `/app`, `/data` by

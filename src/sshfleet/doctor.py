@@ -124,12 +124,42 @@ def run_checks(context: Context) -> list[Check]:
     elif context.config.environments:
         checks.append(Check("generated ssh config", "warn", "not written yet", "run any sshfleet command"))
 
+    checks.append(host_key_check(context.config.ssh.strict_host_key_checking))
+
     checks.extend(service_checks())
 
     for warning in context.warnings:
         checks.append(Check("startup", "warn", warning))
 
     return checks
+
+
+def host_key_check(policy: str) -> Check:
+    """How a host's key is believed. sshfleet's line comes first in the generated config, so it
+    is the one in effect whatever the SSH files say (SECURITY.md, "How it connects")."""
+    value = str(policy).strip().lower()
+    if value == "yes":
+        return Check("host keys", "ok", "only keys already in known_hosts are accepted (StrictHostKeyChecking yes)")
+    if value in ("no", "off"):
+        return Check(
+            "host keys",
+            "warn",
+            "any key is accepted, a changed one included (StrictHostKeyChecking no)",
+            "set ssh.strict_host_key_checking: accept-new, or yes with the keys in ~/.ssh/known_hosts",
+        )
+    if value == "ask":
+        return Check(
+            "host keys",
+            "warn",
+            "a host not in known_hosts cannot be reached: ssh would ask, and sshfleet never lets it (BatchMode)",
+            "add the keys to ~/.ssh/known_hosts and set ssh.strict_host_key_checking: yes",
+        )
+    return Check(
+        "host keys",
+        "ok",
+        "a host's key is trusted the first time it is seen, then checked (StrictHostKeyChecking accept-new). "
+        "To trust none unseen, add the keys to ~/.ssh/known_hosts and set ssh.strict_host_key_checking: yes",
+    )
 
 
 def service_checks(manager: service_module.Supervisor | None = None) -> list[Check]:
