@@ -902,6 +902,13 @@ async def test_host(request: Request, alias: str):
 # ------------------------------------------------------------------------------ tunnels
 
 
+def _web_address(value: str | None) -> str | None:
+    """Shown as a link and handed to the browser: http or https only, never javascript: or file:."""
+    if value and not value.strip().lower().startswith(("http://", "https://")):
+        raise ValueError("must be an http:// or https:// address")
+    return value
+
+
 class TunnelBody(BaseModel):
     name: str
     env: str
@@ -911,6 +918,8 @@ class TunnelBody(BaseModel):
     local: int = Field(ge=1, le=65535)
     open_url: str | None = None
 
+    _web = field_validator("open_url")(_web_address)
+
 
 class TunnelPatch(BaseModel):
     env: str | None = None
@@ -919,6 +928,8 @@ class TunnelPatch(BaseModel):
     remote_port: int | None = Field(default=None, ge=1, le=65535)
     local: int | None = Field(default=None, ge=1, le=65535)
     open_url: str | None = None
+
+    _web = field_validator("open_url")(_web_address)
 
 
 def _check_tunnel(state: WebState, name: str, env: str, via: str, local: int) -> None:

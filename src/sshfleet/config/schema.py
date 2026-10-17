@@ -210,6 +210,16 @@ def _health(raw: Any) -> dict[str, Any]:
     return health
 
 
+def _web_address(value: Any, tunnel: str) -> str | None:
+    """A tunnel's "open in the browser" address: http or https, nothing a link could run."""
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text.lower().startswith(("http://", "https://")):
+        raise ConfigError(f"tunnel {tunnel!r}: open must be an http:// or https:// address, not {text!r}")
+    return text
+
+
 @dataclass(slots=True)
 class TunnelCfg:
     name: str
@@ -238,7 +248,7 @@ class TunnelCfg:
             via=str(raw["via"]),
             remote=str(raw["remote"]),
             local=int(raw["local"]),
-            open_url=raw.get("open"),
+            open_url=_web_address(raw.get("open"), name),
         )
 
 

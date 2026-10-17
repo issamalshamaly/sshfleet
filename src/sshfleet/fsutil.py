@@ -58,3 +58,27 @@ def atomic_write(path: Path, data: bytes | str, *, mode: int | None = None) -> P
         raise
     fsync_dir(target.parent)
     return target
+
+
+def make_private_dirs(path: Path) -> Path:
+    """``mkdir -p`` where every directory it creates is 0700.
+
+    ``Path.mkdir(parents=True, mode=…)`` gives the mode to the last directory only; the ones
+    above it get the umask's, and a downloads folder made that way was readable by every user on
+    the machine.
+    """
+    missing: list[Path] = []
+    current = path
+    while not current.exists():
+        missing.append(current)
+        current = current.parent
+    for directory in reversed(missing):
+        with contextlib.suppress(FileExistsError):
+            directory.mkdir(mode=0o700)
+    return path
+
+
+def open_private(path: Path, mode: str = "w", *, encoding: str = "utf-8"):
+    """Open a file for writing that only this user can read, from the moment it exists."""
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    return open(descriptor, mode, encoding=encoding)

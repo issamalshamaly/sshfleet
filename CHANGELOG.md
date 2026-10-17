@@ -154,6 +154,16 @@ the sections after the summary say how each part works.
   list. The list now also covers `/proc` (where `environ` is), docker, kube and gnupg folders,
   `.git-credentials`, shell histories, `gshadow` and backups such as `server.key.bak`, and the
   Inspect action hides a container's environment variables.
+* Downloads, their folders and log bundles are private to you (0600/0700), like the config and
+  the audit log; a download folder named after an environment can never climb out of the
+  downloads directory.
+* A root-owned upload waits on the host in a private file `mktemp` made, not at a predictable
+  `/tmp` name another user there could plant a link at before `sudo install` reads it.
+* A tunnel's "open in browser" address must be http or https; `javascript:` and `file:` links are
+  refused from the settings page and from the config file.
+* A file that holds a private key is never read as SSH configuration, whatever it is called.
+* `secrets.env` is kept inside sshfleet, not put in its environment, which every ssh and every
+  terminal session opened from the page inherited — `LD_PRELOAD=…` in it reached them all.
 * The generated SSH config is written line by line, so a key path, SSH file path or environment
   name with a line break in it could add a line of its own, such as a `ProxyCommand` run on this
   machine. Such a value is refused when the config is written, and by the settings page when it

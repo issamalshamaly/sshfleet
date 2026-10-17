@@ -6,7 +6,6 @@ Building a Context parses the config and the SSH config files and writes the gen
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,6 +26,9 @@ class Context:
     mux: MuxManager
     audit: AuditLog
     warnings: list[str] = field(default_factory=list)
+    #: The values in ``secrets.env``, for whatever needs a token by name. Kept here, never in
+    #: the process environment, which every ssh and every terminal session inherits.
+    secrets: dict[str, str] = field(default_factory=dict)
     _runner: SshRunner | None = None
 
     def remember(self, reason: str, *, source: str = "cli") -> StateRecord | None:
@@ -58,7 +60,11 @@ class Context:
         return build_context(self.paths, write_ssh_config=True)
 
     def load_secrets(self) -> int:
-        """Read ``secrets.env`` into the process environment. Refuses a world-readable file."""
+        """Read ``secrets.env`` into :attr:`secrets`. Refuses a world-readable file.
+
+        It used to go into ``os.environ``, so a line such as ``LD_PRELOAD=…`` or
+        ``SSHFLEET_SSH_BIN=…`` reached every ssh and every shell opened from the page.
+        """
         path = self.paths.secrets_file
         if not path.exists():
             return 0
@@ -72,7 +78,7 @@ class Context:
             if not text or text.startswith("#") or "=" not in text:
                 continue
             key, _, value = text.partition("=")
-            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+            self.secrets[key.strip()] = value.strip().strip("'\"")
             loaded += 1
         return loaded
 

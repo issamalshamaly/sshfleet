@@ -193,12 +193,32 @@ def test_which_paths_scp_may_be_given(path, safe):
     assert _scp_path_is_safe(path) is safe
 
 
-def test_the_staging_copy_has_a_name_made_of_safe_characters():
-    from sshfleet.files.transfer import _staging_name
+async def test_a_root_owned_upload_waits_in_a_private_mktemp_file(context, fake_ssh, tmp_path: Path, monkeypatch):
+    """It waited at /tmp/sshfleet-<time>-<the uploaded name>: predictable, so another user on the
+    host could plant a link there before `sudo install` read it."""
+    from sshfleet.files import upload
+    from sshfleet.ssh import argv as A
 
-    assert _staging_name("x$(id).txt") == "x__id_.txt"
-    assert _staging_name("report-2026_v2.csv") == "report-2026_v2.csv"
-    assert _staging_name("") == "upload"
+    monkeypatch.setattr(A, "rsync_argv", lambda *a, **k: ["sh", "-c", "echo 'rsync: not found' >&2; exit 127"])
+    copies: list[str] = []
+
+    def scp(_config, _sources, destination, **_):
+        copies.append(destination)
+        # The target itself is root's; the private staging file is ours.
+        return ["sh", "-c", "echo 'scp: Permission denied' >&2; exit 1"] if len(copies) == 1 else ["true"]
+
+    monkeypatch.setattr(A, "scp_argv", scp)
+    fake_ssh.write_fixture("tst-order", "cmd_mktemp__tmp_sshfleet_upload_XXXXXXXXXX.txt", "/tmp/sshfleet-upload.Ab12Cd34Ef\n")
+    fake_ssh.write_fixture("tst-order", "stat.txt", "12 644 root root\n")
+    fake_ssh.write_fixture("tst-order", "default.txt", "")  # sudo install answers with nothing
+
+    local = tmp_path / "nginx.conf"
+    local.write_text("worker_processes 2;\n")
+    result = await upload(context.runner, context.inventory.host("tst-order"), local, "/etc/nginx/nginx.conf")
+    assert result.ok and result.method == "sudo-install", result.message
+    assert copies == ["tst-order:/etc/nginx/nginx.conf", "tst-order:/tmp/sshfleet-upload.Ab12Cd34Ef"]
+    install = next(c["remote"] for c in fake_ssh.calls() if "install" in (c.get("remote") or ""))
+    assert "/tmp/sshfleet-upload.Ab12Cd34Ef /etc/nginx/nginx.conf" in install
 
 
 @pytest.fixture

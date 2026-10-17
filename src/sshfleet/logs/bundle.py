@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .. import __version__
+from ..fsutil import make_private_dirs, open_private
 from .model import LogLine, SearchDone, SearchRequest, SourceDone, SourceError
 
 SLUG_RE = re.compile(r"[^A-Za-z0-9]+")
@@ -43,7 +44,8 @@ class Bundle:
     merged_limit: int = 200_000
 
     def __post_init__(self) -> None:
-        self.directory.mkdir(parents=True, exist_ok=True)
+        # A bundle is production log output: private, like the config and the audit log.
+        make_private_dirs(self.directory)
 
     def _handle(self, label: str, source_id: str):
         handle = self._handles.get(source_id)
@@ -55,7 +57,7 @@ class Bundle:
                 path = self.directory / f"{slug(label, 30)}-{suffix}.log"
                 suffix += 1
             self.files[source_id] = path
-            handle = path.open("w", encoding="utf-8")
+            handle = open_private(path)
             self._handles[source_id] = handle
         return handle
 
@@ -71,7 +73,7 @@ class Bundle:
     def _write_merged(self) -> Path | None:
         path = self.directory / "merged.log"
         if self._keep_merged:
-            with path.open("w", encoding="utf-8") as handle:
+            with open_private(path) as handle:
                 for line in self._merged:
                     when = line.when
                     stamp = when.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if when else "-" * 23
@@ -148,7 +150,8 @@ class Bundle:
             ],
         }
         path = self.directory / "manifest.json"
-        path.write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
+        with open_private(path) as handle:
+            handle.write(json.dumps(manifest, indent=1, ensure_ascii=False))
         return self.directory
 
 

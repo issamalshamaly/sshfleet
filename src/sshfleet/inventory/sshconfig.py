@@ -90,6 +90,10 @@ def parse_ssh_config(path: Path, *, _seen: set[Path] | None = None) -> list[Host
         text = path.read_text(errors="replace")
     except OSError as exc:
         raise FileNotFoundError(f"cannot read ssh config {path}: {exc}") from exc
+    # Named like configuration but holding a key (an environment pointed at the wrong file): the
+    # names above cannot catch that, so the content is looked at once and the file dropped.
+    if holds_key_material(text.encode(errors="ignore")):
+        raise OSError(f"{path} holds a private key, not SSH configuration; it is not read")
 
     stanzas: list[HostStanza] = []
     current: HostStanza | None = None

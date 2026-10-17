@@ -8,6 +8,7 @@ root go to a temp path and are then installed with the original mode and owner.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import shlex
 import time
@@ -15,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..fsutil import make_private_dirs
 from ..inventory import Host
 from ..ssh import argv as A
 from ..ssh import proc as proc_module
@@ -80,13 +82,21 @@ def _scp_path_is_safe(path: str) -> bool:
     return not any(ch in _SHELL_SPECIAL or ord(ch) < 32 or ch == "\x7f" for ch in path)
 
 
-def _staging_name(name: str) -> str:
-    """A name for the copy left in /tmp before ``sudo install``, made of safe characters only."""
-    return re.sub(r"[^A-Za-z0-9._-]", "_", name)[:80] or "upload"
+def _private(path: Path) -> Path:
+    """A fetched file is readable by this user only, like everything else sshfleet keeps."""
+    os.chmod(path, 0o600)
+    return path
+
+
+def _segment(name: str) -> str:
+    """A name as one directory level: nothing that climbs out or splits it in two."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip(".")
+    return cleaned or "_"
 
 
 def download_dir_for(base: Path, host: Host) -> Path:
-    return base / host.env / host.alias / time.strftime("%Y%m%d-%H%M%S")
+    # The environment and alias come from configuration; "../x" in either must not leave `base`.
+    return base / _segment(host.env) / _segment(host.alias) / time.strftime("%Y%m%d-%H%M%S")
 
 
 async def _stream_progress(
@@ -143,7 +153,7 @@ async def download(
     """Fetch one remote file. Refuses anything on the deny list, before connecting."""
     assert_allowed(remote_path, deny_extra)
     _refuse_paused(runner, host)
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    make_private_dirs(destination.parent)
     if destination.is_dir():
         destination = destination / Path(remote_path).name
 
@@ -157,7 +167,7 @@ async def download(
     proc = await proc_module.spawn(argv)
     _, err = await _stream_progress(proc, on_progress, started)
     if proc.returncode == 0:
-        return TransferResult(source, str(destination), destination.stat().st_size, "rsync", time.monotonic() - started, True)
+        return TransferResult(source, str(_private(destination)), destination.stat().st_size, "rsync", time.monotonic() - started, True)
 
     stderr = err.decode(errors="replace")
     rsync_failed_remotely = proc.returncode in {12, 127} or "rsync: not found" in stderr or "command not found" in stderr
@@ -169,7 +179,7 @@ async def download(
         scp = A.scp_argv(runner.ssh_config, [source], str(destination))
         result = await proc_module.run(scp, timeout=timeout)
         if result.returncode == 0 and destination.exists():
-            return TransferResult(source, str(destination), destination.stat().st_size, "scp", time.monotonic() - started, True)
+            return TransferResult(source, str(_private(destination)), destination.stat().st_size, "scp", time.monotonic() - started, True)
         stderr = result.stderr.decode(errors="replace") or stderr
 
     # 3. The file is root-only: stream it through sudo cat.
@@ -191,7 +201,7 @@ async def download(
         cat_err = await cat.stderr.read() if cat.stderr else b""
         await cat.wait()
         if cat.returncode == 0 and written:
-            return TransferResult(source, str(destination), written, "sudo-cat", time.monotonic() - started, True)
+            return TransferResult(source, str(_private(destination)), written, "sudo-cat", time.monotonic() - started, True)
         destination.unlink(missing_ok=True)
         stderr = cat_err.decode(errors="replace") or stderr
 
@@ -234,14 +244,22 @@ async def upload(
         return TransferResult(str(local_path), destination, size, "scp", time.monotonic() - started, True)
     stderr = result.stderr.decode(errors="replace") or stderr
 
-    # Root-owned target: land in /tmp, then install with the original mode and owner.
+    # Root-owned target: land in /tmp, then install with the original mode and owner. The copy
+    # waits in a file mktemp made: private to this user and named unpredictably, so nobody else on
+    # the host can put a link or a file of their own there between the copy and `sudo install`.
     if host.sudo and "Permission denied" in stderr:
         original = await stat_file(runner, host, remote_path)
-        staging = f"/tmp/sshfleet-{int(time.time())}-{_staging_name(local_path.name)}"
+        made = await runner.run(host, "mktemp /tmp/sshfleet-upload.XXXXXXXXXX", timeout=20, retries=0)
+        staging = made.out.strip() if made.ok else ""
+        if not re.fullmatch(r"/tmp/sshfleet-upload\.[A-Za-z0-9]{10}", staging):
+            message = f"could not make a private staging file on the host: {made.err.strip() or 'mktemp failed'}"
+            return TransferResult(str(local_path), destination, 0, "scp", time.monotonic() - started, False, message)
         staged = await proc_module.run(
             A.scp_argv(runner.ssh_config, [str(local_path)], f"{host.alias}:{staging}"), timeout=timeout
         )
-        if staged.returncode == 0:
+        if staged.returncode != 0:
+            await runner.run(host, f"rm -f -- {shlex.quote(staging)}", timeout=20, retries=0)
+        else:
             mode = original[1] if original else "644"
             owner = f"{original[2]}:{original[3]}" if original else "root:root"
             install = (
