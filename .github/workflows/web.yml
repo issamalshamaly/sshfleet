@@ -35,5 +35,7 @@ jobs:
         working-directory: web
       - run: pnpm build
         working-directory: web
+      # Dependabot updates libraries but cannot rebuild the bundle; that is done before it is merged.
       - name: the committed bundle must match the source
+        if: github.actor != 'dependabot[bot]'
         run: git diff --exit-code --stat -- src/sshfleet/web/static || (echo "rebuild src/sshfleet/web/static and commit it" && exit 1)

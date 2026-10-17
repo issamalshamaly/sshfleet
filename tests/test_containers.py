@@ -320,7 +320,11 @@ def test_the_status_script_reports_the_probe_it_gets(inventory, tmp_path, monkey
 
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "docker").write_text('#!/bin/sh\nprintf "running\\tUp 3 seconds\\n"\n')
+    # The host has no runtime on record, so the script takes podman if there is one, then
+    # docker. Both are faked: a machine with a real podman in /usr/bin (GitHub's runners) would
+    # otherwise be asked, and know nothing of this container.
+    for runtime in ("docker", "podman"):
+        (fake / runtime).write_text('#!/bin/sh\nprintf "running\\tUp 3 seconds\\n"\n')
     (fake / "curl").write_text('#!/bin/sh\nprintf "200"\n')
     (fake / "sudo").write_text('#!/bin/sh\nwhile [ "$1" = "-n" ]; do shift; done\nexec "$@"\n')
     for entry in fake.iterdir():
