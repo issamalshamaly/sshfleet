@@ -22,6 +22,15 @@ from ..inventory import Host
 from .names import NAME_RE
 from .runtime import RemoteCommand
 
+#: Drops the values of a multi-line ``"Env": [ … ]`` array from ``inspect`` output, as both
+#: docker and podman print it; an empty or absent one is left alone. The environment is where
+#: a deployment puts its database password and API keys, and this runs in a shared terminal.
+HIDE_ENV = "awk " + shlex.quote(
+    '/"Env": \\[$/ { sub(/\\[$/, "[ \\"(hidden by sshfleet: environment variables can hold secrets)\\" ],"); print; skip = 1; next }'
+    ' skip && /^[[:space:]]*\\],?$/ { skip = 0; next }'
+    " !skip"
+)
+
 #: Where a Node service's code sits in these images, and the directory the toolkit action
 #: installs into when it is there.
 NODE_APP_DIR = "/usr/src/app"
@@ -236,11 +245,12 @@ CATALOGUE: tuple[QuickAction, ...] = (
     QuickAction(
         id="inspect",
         title="Inspect",
-        detail="Everything the runtime knows about this container, as JSON, in a pager.",
+        detail="Everything the runtime knows about this container, as JSON, in a pager — except its "
+        "environment variables, which often hold passwords and keys.",
         group="watch",
         writes=False,
         # A pager, so a long document can be read rather than scrolled past.
-        build=lambda host, name: RemoteCommand(host, "inspect", (name,)).render() + " | ${PAGER:-less -R}",
+        build=lambda host, name: RemoteCommand(host, "inspect", (name,)).render() + f" | {HIDE_ENV} | ${{PAGER:-less -R}}",
         when=lambda ctx: True,
     ),
     QuickAction(

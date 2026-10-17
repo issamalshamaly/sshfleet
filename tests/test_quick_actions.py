@@ -121,3 +121,23 @@ def test_no_action_can_take_a_service_down(host):
         assert not any(word in FORBIDDEN_VERBS for word in words[:2]), command
         if words[0] in {"docker", "podman"}:
             assert words[1] in ALLOWED_VERBS, command
+
+
+def test_inspect_hides_the_containers_environment(host):
+    """`docker inspect` prints Config.Env, where a deployment keeps its database password; this
+    runs in a shared terminal. The filter in the command is run here on real-shaped output."""
+    import subprocess
+
+    from sshfleet.containers.quick import HIDE_ENV
+
+    _, command = command_for(host, "inspect", "order-production")
+    assert HIDE_ENV in command
+    sample = (
+        '[\n    {\n        "Config": {\n            "Env": [\n                "PATH=/usr/bin",\n'
+        '                "DB_PASSWORD=hunter2"\n            ],\n            "Cmd": ["node"]\n        },\n'
+        '        "HostConfig": {\n            "Env": [],\n            "Binds": null\n        }\n    }\n]\n'
+    )
+    shown = subprocess.run(["bash", "-c", HIDE_ENV], input=sample, text=True, capture_output=True, check=True).stdout
+    assert "hunter2" not in shown and "PATH=/usr/bin" not in shown
+    assert "hidden by sshfleet" in shown
+    assert '"Cmd": ["node"]' in shown and '"Env": [],' in shown  # the rest, and an empty Env, untouched

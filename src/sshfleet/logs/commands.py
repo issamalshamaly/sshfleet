@@ -314,6 +314,12 @@ def host_file_pipeline(
     names = [f"-name {shlex.quote(base)}"]
     if source.rotated_glob:
         names.append(f"-o -name {shlex.quote(source.rotated_glob)}")
+    # The rotated glob comes from the config: one written as ".env*", or a "*" in a directory that
+    # also holds the app's secrets, would read them as logs. Whatever it matches, a name on the
+    # deny list is never one of the files.
+    from ..files.denylist import HARD_DENY
+
+    excluded = " ".join(f"! -iname {shlex.quote(pattern)}" for pattern in HARD_DENY)
     sudo = _sudo(host)
     # The label says UTC, so the value has to be UTC: an absolute window resolved in a
     # non-UTC display zone is still an aware datetime in that zone.
@@ -323,7 +329,7 @@ def host_file_pipeline(
         "# sshfleet:logsearch\n"
         "export LC_ALL=C\n"
         f"D={shlex.quote(directory)}\n"
-        f'mapfile -t FILES < <({sudo}find "$D" -maxdepth 1 -type f \\( {" ".join(names)} \\) '
+        f'mapfile -t FILES < <({sudo}find "$D" -maxdepth 1 -type f \\( {" ".join(names)} \\) {excluded} '
         f'-newermt {shlex.quote(since_find)} -printf \'%T@ %p\\n\' 2>/dev/null | sort -n | cut -d" " -f2-)\n'
         f'[ ${{#FILES[@]}} -gt 0 ] || {{ echo "{ERROR_MARKER} no_files" >&2; exit 94; }}\n'
         f'total=$({sudo}stat -c %s -- "${{FILES[@]}}" 2>/dev/null | awk \'{{s+=$1}} END{{print s+0}}\')\n'

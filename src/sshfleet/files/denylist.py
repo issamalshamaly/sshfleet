@@ -14,7 +14,9 @@ import posixpath
 #: Cannot be disabled or overridden by configuration.
 HARD_DENY: tuple[str, ...] = (
     "*.pem",
+    "*.pem.*",          # privkey.pem.old, server.pem.bak
     "*.key",
+    "*.key.*",
     "*.p12",
     "*.pfx",
     "*.jks",
@@ -34,6 +36,11 @@ HARD_DENY: tuple[str, ...] = (
     ".pgpass",
     ".htpasswd",
     "shadow",
+    "shadow-",
+    "gshadow",
+    "gshadow-",
+    ".git-credentials",
+    ".*_history",       # shell and client histories: passwords typed on a command line
     "*secret*",
     "*.keystore",
     "*.truststore",
@@ -48,6 +55,13 @@ HARD_DENY_DIRS: tuple[str, ...] = (
     "/home/*/.aws",
     "/root/.aws",
     "/var/lib/jenkins/secrets",
+    "/proc",            # /proc/<pid>/environ is every variable a process was started with
+    "/root/.docker",
+    "/home/*/.docker",  # config.json holds registry credentials
+    "/root/.kube",
+    "/home/*/.kube",
+    "/root/.gnupg",
+    "/home/*/.gnupg",
 )
 
 

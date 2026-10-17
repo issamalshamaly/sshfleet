@@ -24,6 +24,18 @@ SECRETS = [
     "/home/ubuntu/.aws/credentials",
     "/srv/app/.env",
     "/srv/app/.env.local",
+    # Added after the launch review found them all fetchable:
+    "/proc/1/environ",
+    "/proc/self/environ",
+    "/home/ubuntu/.docker/config.json",
+    "/root/.kube/config",
+    "/home/ubuntu/.git-credentials",
+    "/home/ubuntu/.bash_history",
+    "/root/.psql_history",
+    "/etc/gshadow",
+    "/etc/shadow-",
+    "/etc/nginx/server.key.bak",
+    "/etc/letsencrypt/live/x/privkey.pem.old",
 ]
 
 ALLOWED = [
@@ -229,3 +241,42 @@ async def test_an_upload_does_not_hand_scp_a_path_a_shell_would_run(context, tmp
     assert not result.ok
     assert "scp was not tried" in result.message
     assert rsync_missing_on_the_host == []
+
+
+# ----------------------------------------------------- what a path leads to
+
+
+async def test_a_link_to_a_secret_is_refused_before_anything_is_read(context, fake_ssh, tmp_path: Path):
+    """The name asked for was harmless; what it pointed at was not, and only the name was checked."""
+    import json
+
+    from sshfleet.files import download, preview
+
+    fake_ssh.write_fixture("tst-order", "resolve.txt", "/home/ubuntu/order.env.production\nregular file\n", scenario="healthy")
+    host = context.inventory.host("tst-order")
+    with pytest.raises(DeniedPath, match=r"leads to /home/ubuntu/order\.env\.production"):
+        await preview(context.runner, host, "/home/ubuntu/notes.txt")
+    with pytest.raises(DeniedPath, match="leads to"):
+        await download(context.runner, host, "/home/ubuntu/notes.txt", tmp_path / "out")
+    # Each asked where the path leads and stopped there: no preview script, no copy.
+    calls = [c for c in fake_ssh.calls() if c.get("remote")]
+    assert len(calls) == 2
+    assert not any("rsync" in json.dumps(c) for c in fake_ssh.calls())
+
+
+async def test_a_directory_is_refused_instead_of_copied_whole(context, fake_ssh, tmp_path: Path):
+    """`rsync -a` on a directory copied every file in it, the .env files included."""
+    from sshfleet.files import download
+
+    fake_ssh.write_fixture("tst-order", "resolve.txt", "/home/ubuntu\ndirectory\n", scenario="healthy")
+    host = context.inventory.host("tst-order")
+    with pytest.raises(DeniedPath, match="is a directory"):
+        await download(context.runner, host, "/home/ubuntu", tmp_path / "out")
+
+
+async def test_an_ordinary_file_is_read_at_the_path_it_resolves_to(context, fake_ssh):
+    from sshfleet.files.browse import resolve_file
+
+    fake_ssh.write_fixture("tst-order", "resolve.txt", "/var/www/releases/2026-10-01/app.log\nregular file\n", scenario="healthy")
+    host = context.inventory.host("tst-order")
+    assert await resolve_file(context.runner, host, "/var/www/current/app.log") == "/var/www/releases/2026-10-01/app.log"

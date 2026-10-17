@@ -6,6 +6,7 @@ spaces, quotes or newlines — which a ``ls -l`` parser does not.
 
 from __future__ import annotations
 
+import posixpath
 import shlex
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -134,6 +135,7 @@ async def preview(
     from .denylist import assert_allowed
 
     assert_allowed(path, deny_extra)
+    path = await resolve_file(runner, host, path, deny_extra=deny_extra)
     quoted = shlex.quote(path)
     sudo = "sudo -n " if host.sudo else ""
     script = (
@@ -146,6 +148,46 @@ async def preview(
         error = result.error()
         raise OSError(f"{host.alias}:{path}: {error.message if error else 'preview failed'}")
     return result.out
+
+
+#: What ``stat -L -c %F`` calls a file sshfleet may read.
+REGULAR_FILE_KINDS = frozenset({"regular file", "regular empty file"})
+
+
+async def resolve_file(runner: SshRunner, host: Host, path: str, *, deny_extra: list[str] | None = None) -> str:
+    """Where ``path`` really leads on the host, refused unless it is a file the deny list allows.
+
+    The deny list matches names, and a name is only what was asked for: a link called notes.txt
+    that points at ``.env``, or a directory holding one, passed a check of the requested path
+    alone, and ``rsync -a`` on a directory copied every secret inside it. So the host says first
+    what the path resolves to and what kind of thing that is; the resolved path is checked here
+    too, and the caller reads the resolved path, never the name it was given.
+    """
+    from .denylist import DeniedPath, reason_denied
+
+    quoted = shlex.quote(path)
+    sudo = "sudo -n " if host.sudo else ""
+    script = (
+        "# sshfleet:resolve\n"
+        "export LC_ALL=C\n"
+        f"r=$(readlink -f -- {quoted} 2>/dev/null) || r=$({sudo}readlink -f -- {quoted} 2>/dev/null)\n"
+        f"t=$(stat -L -c %F -- {quoted} 2>/dev/null) || t=$({sudo}stat -L -c %F -- {quoted} 2>/dev/null)\n"
+        'printf "%s\\n%s\\n" "$r" "$t"\n'
+    )
+    result = await runner.run_script(host, script, timeout=20)
+    lines = [line.strip() for line in result.out.splitlines()]
+    resolved = lines[0] if lines else ""
+    kind = lines[1] if len(lines) > 1 else ""
+    if not resolved or not kind:
+        error = result.error()
+        raise OSError(f"{host.alias}:{path}: {error.message if error and not result.ok else 'no such file'}")
+    if kind not in REGULAR_FILE_KINDS:
+        raise DeniedPath(path, f"is a {kind}, and only single files are read or fetched")
+    if resolved != posixpath.normpath(path):
+        reason = reason_denied(resolved, deny_extra)
+        if reason:
+            raise DeniedPath(path, f"leads to {resolved}, which {reason}")
+    return resolved
 
 
 async def stat_file(runner: SshRunner, host: Host, path: str) -> tuple[int, str, str, str] | None:
@@ -170,4 +212,14 @@ def filter_visible(listing: Listing, show_hidden: bool = False) -> list[RemoteEn
     return [e for e in listing.entries if show_hidden or not e.name.startswith(".")]
 
 
-__all__ = ["Listing", "RemoteEntry", "filter_visible", "is_denied", "list_dir", "parse_listing", "preview", "stat_file"]
+__all__ = [
+    "Listing",
+    "RemoteEntry",
+    "filter_visible",
+    "is_denied",
+    "list_dir",
+    "parse_listing",
+    "preview",
+    "resolve_file",
+    "stat_file",
+]

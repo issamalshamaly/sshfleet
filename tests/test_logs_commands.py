@@ -6,6 +6,7 @@ import re
 import shlex
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from helpers import make_config
@@ -396,3 +397,22 @@ def test_the_cli_refuses_a_container_name_that_is_a_command(configured, fake_ssh
     assert result.exit_code == 2
     assert "is not a container name" in result.output
     assert [c for c in fake_ssh.calls() if "x$(id)" in str(c)] == []
+
+
+def test_a_rotated_glob_never_reads_a_secret_as_a_log(inventory, window, tmp_path):
+    """`rotated_glob` comes from the config; "*" in a directory that also holds the app's .env
+    read it as a log. Whatever the glob matches, a name on the deny list is not one of the files.
+    The script's own file search is run, in bash, on a real directory."""
+    for name in ("app.log", "app.log.1", ".env", "app.env", "server.key", "notes.secret"):
+        (tmp_path / name).write_text("line\n")
+    source = LogSource(
+        id="f", kind=SourceKind.HOST_FILE, env="testing", label="wallet", host_alias="tst-wallet",
+        path=str(tmp_path / "app.log"), rotated_glob="*", log_format=LogFormat.PLAIN,
+    )
+    script = commands.build(
+        inventory.host("tst-wallet"), source, request(sources=(source,), allowed_paths=(str(tmp_path),)), window
+    ).script
+    search = script.split("[ ${#FILES[@]} -gt 0 ]")[0] + 'printf "%s\\n" "${FILES[@]}"\n'
+    found = subprocess.run(["bash", "-s"], input=search, text=True, capture_output=True, timeout=20)
+    assert found.returncode == 0, found.stderr
+    assert sorted(Path(line).name for line in found.stdout.split()) == ["app.log", "app.log.1"]

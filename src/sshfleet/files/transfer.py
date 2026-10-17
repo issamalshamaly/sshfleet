@@ -20,7 +20,7 @@ from ..ssh import argv as A
 from ..ssh import proc as proc_module
 from ..ssh.errors import ErrorKind, SshError
 from ..ssh.runner import SshRunner
-from .browse import stat_file
+from .browse import resolve_file, stat_file
 from .denylist import assert_allowed
 
 #: rsync --info=progress2 writes "  1,234,567  42%  1.23MB/s    0:00:03"
@@ -148,6 +148,8 @@ async def download(
         destination = destination / Path(remote_path).name
 
     started = time.monotonic()
+    # Fetch what the path really is, once it is known to be a file the deny list allows.
+    remote_path = await resolve_file(runner, host, remote_path, deny_extra=deny_extra)
     source = f"{host.alias}:{remote_path}"
 
     # 1. rsync: progress, and cheap when the file is already partly there.

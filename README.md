@@ -454,8 +454,17 @@ Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing
   built by the command layer at all, and a test greps the whole source to prove none appear.
   `rm` exists for one case: a container that is already stopped, checked on the host immediately
   before the command, with its name typed back and its last log lines saved first.
-* **Secrets are not downloadable.** The deny list is enforced in the transfer and preview code,
-  not in the interface, and it cannot be switched off.
+* **Secrets are not downloadable.** The deny list (keys, `.env` files, credentials, histories,
+  `/proc`, docker and kube configs, …) is enforced in the transfer, preview and log code, not in
+  the interface, and it cannot be switched off. A path is first resolved on the host, so a link
+  is judged by what it leads to; only single files are fetched, never a directory; a log file
+  glob never picks up a name on the list; and the Inspect action hides a container's environment
+  variables. It is a guard against copying a secret by accident, not a boundary against someone
+  who already has a shell there.
+* **What a request names never becomes a command.** Container names, paths, patterns and ports
+  are quoted where they reach a shell and refused at the door when they cannot be what they
+  claim; a read-only check over every generated log script would refuse one that slipped
+  through, and the tests run hostile names through real bash to prove none does.
 * **Your SSH config files are edited one stanza at a time**, never rewritten, and a copy of the
   whole file is kept before every change. Values are checked before they are written, so nothing
   can smuggle a second keyword (a `ProxyCommand`, say) onto a line.

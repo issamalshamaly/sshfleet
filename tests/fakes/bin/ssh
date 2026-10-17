@@ -155,6 +155,13 @@ def main() -> None:
                 marker = line.split(":", 1)[1].strip()
                 break
         body = read_fixture(alias, f"{marker}.json") or read_fixture(alias, f"{marker}.txt")
+        if body is None and marker == "resolve":
+            # Without a fixture, a path resolves to itself and is a plain file: what most paths
+            # are. A test about links or directories writes resolve.txt ("<target>\n<kind>\n").
+            import shlex as _shlex
+
+            asked = next(line for line in script.splitlines() if line.startswith("r=$(readlink"))
+            body = _shlex.split(asked.split("--", 1)[1].split("2>")[0])[0] + "\nregular file\n"
         if body is None:
             fail(alias, f"fake ssh: no fixture {marker} for {alias}", 1)
         sys.stdout.write(body)

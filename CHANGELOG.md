@@ -148,6 +148,12 @@ the sections after the summary say how each part works.
   hands the remote path to the host's shell. A path with characters a shell acts on is no longer
   given to it (the result says why), and the copy staged in /tmp for a root-owned upload gets a
   name made of safe characters.
+* Files and logs no longer trust a name: a path is resolved on the host first and the deny list
+  checks what it leads to, so a link to an `.env` is refused; a directory is refused rather than
+  copied whole with every secret inside; a log source's rotated glob never picks up a name on the
+  list. The list now also covers `/proc` (where `environ` is), docker, kube and gnupg folders,
+  `.git-credentials`, shell histories, `gshadow` and backups such as `server.key.bak`, and the
+  Inspect action hides a container's environment variables.
 * The generated SSH config is written line by line, so a key path, SSH file path or environment
   name with a line break in it could add a line of its own, such as a `ProxyCommand` run on this
   machine. Such a value is refused when the config is written, and by the settings page when it
