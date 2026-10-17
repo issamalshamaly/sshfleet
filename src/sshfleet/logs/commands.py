@@ -425,7 +425,9 @@ def follow_pipeline(host: Host, source: LogSource, pattern: str = "", *, since: 
     parts = [f'{sudo}"$RT" logs -f -t --since {shlex.quote(since)} --tail {tail} {quoted} 2>&1', ANSI_SED]
     stages = ["logs", "ansi"]
     if pattern.strip():
-        parts.append(f"grep -a --line-buffered --color=never -n -i -E -e {shlex.quote(pattern)} --")
+        # No -n: a follow shows no context, and its reader takes each line as docker wrote it.
+        # With line numbers in front, every line lost its timestamp and its place in the view.
+        parts.append(f"grep -a --line-buffered --color=never -i -E -e {shlex.quote(pattern)} --")
         stages.append("grep")
     script = (
         "# sshfleet:logfollow\n"

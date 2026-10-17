@@ -426,3 +426,23 @@ def test_a_short_value_is_not_mistaken_for_the_scripts_own_words(inventory, wind
     commands.build(inventory.host("tst-order"), source, request(sources=(source,), pattern=""), window)
     commands.build(inventory.host("tst-order"), stdout_source(), request(pattern=value), window)
     commands.follow_pipeline(inventory.host("tst-order"), source, value)
+
+
+def test_a_followed_line_keeps_its_timestamp_when_a_pattern_filters_it(inventory, tmp_path):
+    """Follow's grep had -n, so each line arrived as ``3:2026-…`` and the reader, which takes a
+    line as docker wrote it, lost its timestamp and its place in the merged view."""
+    from sshfleet.logs import parsers
+
+    line = "2026-10-17T10:00:00.000000000Z [2026-10-17 10:00:00.000 +0000] ERROR: boom"
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "docker").write_text(f'#!/bin/sh\ncase "$1" in inspect) exit 0;; logs) echo {shlex.quote(line)};; esac\n')
+    (fake / "sudo").write_text('#!/bin/sh\nwhile [ "$1" = "-n" ]; do shift; done\nexec "$@"\n')
+    for entry in fake.iterdir():
+        entry.chmod(0o755)
+    script = commands.follow_pipeline(inventory.host("tst-order"), stdout_source(), "boom").script
+    run = subprocess.run(["bash", "-s"], input=script, text=True, capture_output=True,
+                         env={"PATH": f"{fake}:/usr/bin:/bin", "HOME": str(tmp_path)}, timeout=20)
+    assert run.stdout.strip() == line, run.stderr
+    ts, _ = parsers.split_docker_prefix(run.stdout.strip())
+    assert ts is not None

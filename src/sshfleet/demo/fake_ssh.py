@@ -237,10 +237,11 @@ def answer_logfollow(machine: fleet.Machine, text: str, scenario: str) -> int:
     if box is None or box.name in live().removed.get(machine.alias, []):
         err(f"{ERROR} missing_container")
         return 90
-    grep = None
+    grep, numbered = None, False
     if "grep" in tokens:
         options = tokens[tokens.index("grep") + 1 : tokens.index("--", tokens.index("grep"))]
         grep = re.compile(after(options, "-e") or "", re.IGNORECASE if "-i" in options else 0)
+        numbered = "-n" in options
     now = time.time()
     seen = 0
 
@@ -251,7 +252,7 @@ def answer_logfollow(machine: fleet.Machine, text: str, scenario: str) -> int:
             if grep is None:
                 sys.stdout.write(line + "\n")
             elif grep.search(line):
-                sys.stdout.write(f"{seen}:{line}\n")
+                sys.stdout.write(f"{seen}:{line}\n" if numbered else line + "\n")
         sys.stdout.flush()
 
     emit(fleet.container_log(machine, box, scenario, moment(after(tokens, "--since"), now - 60), now)[-int(after(tokens, "--tail") or 200) :])

@@ -242,6 +242,8 @@ the sections after the summary say how each part works.
   a field the collector never filled.
 * A new `config.yaml` no longer carries settings nothing reads (`ui.theme`, `ui.vim_keys`,
   `ui.notify`, `refresh.stats_s`, `refresh.age_tick_s`); a file that has them still loads.
+* Following logs with a pattern showed each line with a line number in front and no time, so the
+  merged view lost its order. The pattern now filters without numbering. Seen in the demo.
 * Following logs no longer retries for ever. A paused host is let go at once, a container gone
   for ten minutes and six failed connections in a row are let go too, and each source says so
   once instead of adding the same error every few seconds.
