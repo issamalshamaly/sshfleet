@@ -43,7 +43,7 @@ def _containers_cell(snapshot: HostSnapshot) -> Text:
         return Text("static", style="dim")
     running = len(snapshot.running_containers)
     expected = snapshot.expected_total
-    style = "red" if snapshot.missing_containers else ("green" if running else "dim")
+    style = "red" if snapshot.vanished_containers else ("green" if running else "dim")
     return Text(f"{running}/{expected}" if expected else str(running), style=style)
 
 
@@ -210,8 +210,8 @@ def host(
             for c in snapshot.containers
         ]
         console.print(table("Containers", ["name", "image", "state", "status", "ports", "restarts"], rows))
-    for name in snapshot.missing_containers:
-        console.print(f"[red]absent[/red] {name} (expected on this host, nothing restarts it automatically)")
+    for name in snapshot.vanished_containers:
+        console.print(f"[red]gone[/red] {name} (was on this host and is no longer listed: removed, not stopped)")
 
     if snapshot.probes:
         console.print("probes: " + "  ".join(f"{p.port}{p.path}={p.code}" for p in snapshot.probes))

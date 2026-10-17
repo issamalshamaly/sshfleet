@@ -68,11 +68,6 @@ def bash_script_argv(ssh_config: Path, alias: str, args: list[str] | None = None
     return ssh_argv(ssh_config, alias, remote)
 
 
-def bash_command_argv(ssh_config: Path, alias: str, script: str) -> list[str]:
-    """Run a script inline: ``bash -c '<script>'`` (used where stdin carries data instead)."""
-    return ssh_argv(ssh_config, alias, "bash -c " + shlex.quote(script))
-
-
 def scp_argv(ssh_config: Path, sources: list[str], destination: str, *, recursive: bool = False) -> list[str]:
     argv = [scp_bin(), "-F", str(ssh_config), "-p", "-q", "-o", "LogLevel=ERROR"]
     if recursive:
@@ -96,8 +91,3 @@ def rsync_argv(
         argv += ["--info=progress2", "--no-inc-recursive"]
     argv += [*extra, source, destination]
     return argv
-
-
-def quote_remote(*parts: str) -> str:
-    """Join arguments into a remote shell command with every part quoted."""
-    return " ".join(shlex.quote(p) for p in parts)

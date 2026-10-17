@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -228,43 +228,3 @@ class SshRunner:
             await slot.__aexit__(None, None, None)
             raise
         return proc, slot
-
-    async def stream_lines(
-        self,
-        host: Host | str,
-        remote: str,
-        *,
-        heavy: bool = True,
-    ) -> AsyncIterator[bytes]:
-        """Iterate a remote command's stdout line by line (convenience over :meth:`spawn`)."""
-        proc, slot = await self.spawn(host, remote, heavy=heavy)
-        try:
-            assert proc.stdout is not None
-            while True:
-                chunk = await proc.stdout.readline()
-                if not chunk:
-                    break
-                yield chunk
-            await proc.wait()
-        finally:
-            await proc_module.terminate(proc)
-            await slot.__aexit__(None, None, None)
-
-    # ----------------------------------------------------------------- fanout
-
-    async def fan_out(
-        self,
-        hosts: Sequence[Host],
-        remote: str,
-        *,
-        timeout: float = DEFAULT_TIMEOUT,
-    ) -> AsyncIterator[RunResult]:
-        """Run the same command on many hosts, yielding results as they finish."""
-        tasks = [asyncio.create_task(self.run(host, remote, timeout=timeout)) for host in hosts]
-        try:
-            for completed in asyncio.as_completed(tasks):
-                yield await completed
-        finally:
-            for task in tasks:
-                if not task.done():
-                    task.cancel()

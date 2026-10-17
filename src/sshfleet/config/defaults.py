@@ -23,11 +23,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hosts": {},
     "refresh": {
         "fast_s": 120,
-        "stats_s": 240,
         "stale_after_s": 300,
         "collector_timeout_s": 25,
         "connect_timeout_s": 10,
-        "age_tick_s": 5,
     },
     "concurrency": {"global": 16, "per_bastion": 8, "heavy_logs_per_bastion": 6, "heavy_logs_global": 10},
     "thresholds": {
@@ -57,9 +55,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "ui": {
         "open_ssh": "auto",
-        "theme": "textual-dark",
-        "vim_keys": True,
-        "notify": {"enabled": True, "cooldown_s": 600},
         # Browser sounds per event; names are the built-in patterns of the web interface.
         "sounds": {"enabled": False, "crit": "alarm", "warn": "chime", "done": "soft", "desktop": False},
     },

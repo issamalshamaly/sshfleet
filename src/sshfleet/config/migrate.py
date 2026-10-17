@@ -329,7 +329,3 @@ def _validate_v3(raw: dict[str, Any]) -> None:
             raise ConfigError(f"host {alias!r}: bad role {role!r}")
     load_mapping(raw)  # the real parser has the last word
 
-
-# Kept for the v1 path, which older tests call directly.
-def migrate_v1(path: Path) -> bool:
-    return upgrade(path) is not None

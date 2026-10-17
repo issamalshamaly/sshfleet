@@ -44,7 +44,7 @@ def containers(
                 "host": alias,
                 "runtime": snapshot.runtime,
                 "containers": snapshot.to_dict()["containers"],
-                "missing": snapshot.missing_containers,
+                "gone": snapshot.vanished_containers,
             },
             ok=snapshot.reachable,
         )
@@ -65,8 +65,8 @@ def containers(
         ]
         for c in snapshot.containers
     ]
-    for name in snapshot.missing_containers:
-        rows.append([name, "—", Text("absent", style="red"), "expected but not present", "", ""])
+    for name in snapshot.vanished_containers:
+        rows.append([name, "—", Text("gone", style="red"), "was on this host, no longer listed", "", ""])
     console.print(table(f"{alias} ({snapshot.runtime})", ["name", "image", "state", "status", "ports", "restarts"], rows))
 
 

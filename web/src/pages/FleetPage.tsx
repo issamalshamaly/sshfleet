@@ -80,7 +80,7 @@ function containerFacts(host: Host) {
   const churn = snapshot.containers.length - tracked.length;
   const running = tracked.filter((c) => c.state === "running").length;
   const stopped = tracked.length - running;
-  const goneNames = [...snapshot.missing_containers, ...snapshot.vanished_containers];
+  const goneNames = snapshot.vanished_containers;
   const gone = goneNames.length;
   // Expected = a number the operator set, else everything that is or should be here.
   const expected = snapshot.expected_count ?? (gone ? tracked.length + gone : 0);
@@ -296,7 +296,7 @@ export default function FleetPage() {
     const answered = scope.filter((h) => h.snapshot).length;
     // Same unit as the per-host cell: the workloads the fleet is held to, not a job runner's churn.
     const containers = scope.reduce((n, h) => n + (h.snapshot?.containers.filter((c) => c.state === "running" && !c.ignored).length ?? 0), 0);
-    const missing = scope.reduce((n, h) => n + (h.snapshot?.missing_containers.length ?? 0), 0);
+    const gone = scope.reduce((n, h) => n + (h.snapshot?.vanished_containers.length ?? 0), 0);
     const alerts = scope.flatMap((h) => h.snapshot?.alerts ?? []);
     return {
       reachable,
@@ -304,7 +304,7 @@ export default function FleetPage() {
       total: scope.length,
       connected: scope.filter((h) => h.connected).length,
       containers,
-      missing,
+      gone,
       crit: alerts.filter((a) => a.severity === "crit").length,
       warn: alerts.filter((a) => a.severity === "warn").length,
     };
@@ -400,9 +400,9 @@ export default function FleetPage() {
             <Text size="xl" fw={700} className="mono">
               {summary.containers}
             </Text>
-            {summary.missing > 0 && (
+            {summary.gone > 0 && (
               <Text size="sm" c="red.4" fw={600}>
-                {summary.missing} missing
+                {summary.gone} gone
               </Text>
             )}
           </Group>

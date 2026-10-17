@@ -341,7 +341,6 @@ def _snapshot_from_dict(entry: dict) -> HostSnapshot | None:
         )
         for c in entry.get("containers") or []
     ]
-    snapshot.missing_containers = list(entry.get("missing_containers") or [])
     snapshot.vanished_containers = list(entry.get("vanished_containers") or [])
     snapshot.expected_count = int(entry["expected_count"]) if entry.get("expected_count") is not None else None
     snapshot.listening = [int(p) for p in entry.get("listening") or []]

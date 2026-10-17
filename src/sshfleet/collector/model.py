@@ -125,7 +125,6 @@ class HostSnapshot:
     nginx: str = ""
     #: Domains this host serves. Discovered on demand, carried forward in between.
     sites: list[SiteInfo] = field(default_factory=list)
-    missing_containers: list[str] = field(default_factory=list)
     #: Containers seen on this host before and gone entirely now (``ps -a`` no longer lists them).
     vanished_containers: list[str] = field(default_factory=list)
     #: Workloads running now that were also running last sweep. Only these are remembered: one
@@ -230,7 +229,6 @@ class HostSnapshot:
                 }
                 for c in self.containers
             ],
-            "missing_containers": self.missing_containers,
             "vanished_containers": self.vanished_containers,
             "established": self.established,
             "vanished_since": self.vanished_since,

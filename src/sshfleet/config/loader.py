@@ -217,8 +217,9 @@ def load_mapping(raw: dict[str, Any]) -> Config:
         probes=_fill(ProbesCfg, raw.get("probes") or {}, "probes"),
         frontends=_fill(FrontendsCfg, raw.get("frontends") or {}, "frontends"),
         hosts=_host_overrides(raw.get("hosts") or {}),
-        # Zero seconds between sweeps, or zero connections at a time, would spin or stall.
-        refresh=_fill(RefreshCfg, raw.get("refresh") or {}, "refresh", minimum=1),
+        # fast_s: 0 is automatic refresh switched off, from the settings page.
+        refresh=_fill(RefreshCfg, raw.get("refresh") or {}, "refresh"),
+        # Zero connections at a time would stall every check.
         concurrency=_fill(ConcurrencyCfg, raw.get("concurrency") or {}, "concurrency", {"global": "global_"}, minimum=1),
         thresholds=_fill(Thresholds, raw.get("thresholds") or {}, "thresholds"),
         ssh=_ssh(raw.get("ssh") or {}),

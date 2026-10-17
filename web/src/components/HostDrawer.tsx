@@ -401,7 +401,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
               </Tabs.Panel>
 
               <Tabs.Panel value="containers" pt="md">
-                {!snapshot || (snapshot.containers.length === 0 && snapshot.missing_containers.length === 0 && snapshot.vanished_containers.length === 0) ? (
+                {!snapshot || (snapshot.containers.length === 0 && snapshot.vanished_containers.length === 0) ? (
                   <EmptyState title={snapshot?.runtime === "none" ? "No container runtime on this host" : "No containers"} />
                 ) : compact ? (
                   <Stack gap="sm">
@@ -458,21 +458,6 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                             </Button>
                           )}
                         </CardActions>
-                      </DataCard>
-                    ))}
-                    {snapshot.missing_containers.map((name) => (
-                      <DataCard key={name}>
-                        <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
-                          <Text size="sm" className="mono" fw={600} c="red.4" style={{ overflowWrap: "anywhere" }}>
-                            {name}
-                          </Text>
-                          <Badge color="red" variant="filled" size="sm">
-                            absent
-                          </Badge>
-                        </Group>
-                        <Text size="xs" c="dimmed" mt={4}>
-                          Expected here; nothing restarts it automatically.
-                        </Text>
                       </DataCard>
                     ))}
                     {snapshot.vanished_containers.map((name) => (
@@ -606,24 +591,6 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
                               )}
                             </Group>
                           </Table.Td>
-                        </Table.Tr>
-                      ))}
-                      {snapshot.missing_containers.map((name) => (
-                        <Table.Tr key={name}>
-                          <Table.Td>
-                            <Text size="sm" className="mono" fw={600} c="red.4">
-                              {name}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              expected here; nothing restarts it automatically
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Badge color="red" variant="filled" size="sm">
-                              absent
-                            </Badge>
-                          </Table.Td>
-                          <Table.Td colSpan={4} />
                         </Table.Tr>
                       ))}
                       {snapshot.vanished_containers.map((name) => (

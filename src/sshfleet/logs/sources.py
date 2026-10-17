@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from os.path import commonprefix
 
-from ..config import Config
 from ..containers.names import check_container_name
 from ..inventory import Host, Inventory
 from .model import LogFormat, LogSource, SourceKind
@@ -224,14 +223,8 @@ def main_sources(inventory: Inventory, env: str, snapshots=None, *, hosts: list[
     return out
 
 
-def all_sources_for_host(host: Host, config: Config, snapshot=None) -> list[LogSource]:
-    """Kept name for the picker; ``config`` is no longer consulted."""
-    return host_sources(host, snapshot)
-
-
 __all__ = [
     "NGINX_ROLES",
-    "all_sources_for_host",
     "container_source_for",
     "extra_file_sources",
     "host_file_source",

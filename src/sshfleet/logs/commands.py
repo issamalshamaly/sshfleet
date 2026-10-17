@@ -31,17 +31,6 @@ FIRST_MARKER = "SSHFLEET_FIRST"
 COUNT_MARKER = "SSHFLEET_COUNT"
 FILES_MARKER = "SSHFLEET_FILES"
 
-#: Stage-one commands a generated pipeline may use. Anything else is a bug or an injection.
-ALLOWED_COMMANDS = frozenset(
-    {
-        "export", "sudo", "timeout", "env", "nice", "ionice", "docker", "podman", "journalctl",
-        "find", "stat", "cat", "zcat", "tail", "head", "awk", "sed", "grep", "cut", "stdbuf",
-        "sort", "mapfile", "test", "echo", "exit", "wc", "printf", "command", "read", "for",
-        "while", "if", "case", "esac", "fi", "done", "do", "then", "else", "elif", "local",
-        "RT", "C", "D", "FILES", "total", "line", "probe", "f", "[",
-    }
-)
-
 #: Never appear in a generated pipeline, whatever the input.
 BANNED_FRAGMENTS = (
     "rm ", "rm\t", "mkfs", "dd ", "shutdown", "reboot", "systemctl stop", "systemctl restart",

@@ -82,3 +82,14 @@ def test_doctor_says_how_host_keys_are_believed():
         check = host_key_check(blind)
         assert check.level == "warn" and "any key is accepted" in check.detail
     assert host_key_check("ask").level == "warn", "BatchMode makes ask fail on every new host"
+
+
+def test_a_container_that_is_gone_turns_the_fleet_table_red():
+    """The table read a field the collector never filled, so a gone container never showed."""
+    from sshfleet.cli.fleet_cmds import _containers_cell
+    from sshfleet.collector.model import HostSnapshot
+
+    snapshot = HostSnapshot(alias="tst-order", env="testing", reachable=True, runtime="docker")
+    snapshot.vanished_containers = ["order-production"]
+    assert _containers_cell(snapshot).style == "red"
+    assert "missing_containers" not in snapshot.to_dict(), "one name for one thing"

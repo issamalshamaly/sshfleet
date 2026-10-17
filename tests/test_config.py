@@ -438,8 +438,10 @@ def test_a_setting_of_the_wrong_kind_is_named_when_the_file_is_read():
     """It used to load as given and fail later: `fast_s: abc` became an endless "refresh failed"."""
     with pytest.raises(ConfigError, match=r"refresh\.fast_s must be a whole number"):
         _parsed("refresh:\n  fast_s: abc\n")
-    with pytest.raises(ConfigError, match=r"refresh\.fast_s must be at least 1"):
-        _parsed("refresh:\n  fast_s: 0\n")
+    with pytest.raises(ConfigError, match=r"refresh\.fast_s must be at least 0"):
+        _parsed("refresh:\n  fast_s: -5\n")
+    # Zero is a setting of its own: automatic refresh switched off from the settings page.
+    assert _parsed("refresh:\n  fast_s: 0\n").refresh.fast_s == 0
     with pytest.raises(ConfigError, match=r"concurrency\.global must be at least 1"):
         _parsed("concurrency:\n  global: 0\n")
     with pytest.raises(ConfigError, match=r"ssh\.compression must be true or false"):

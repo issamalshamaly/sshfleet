@@ -21,7 +21,6 @@ from .model import (
 from .runner import SourceRunner
 from .search import SearchCoordinator
 from .sources import (
-    all_sources_for_host,
     container_source_for,
     extra_file_sources,
     host_file_source,
@@ -54,7 +53,6 @@ __all__ = [
     "SourceRunner",
     "TimeWindow",
     "TimelineMerger",
-    "all_sources_for_host",
     "build",
     "bundle_dir",
     "container_source_for",

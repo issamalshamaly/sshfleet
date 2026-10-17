@@ -268,11 +268,9 @@ class RefreshCfg:
     # Two minutes keeps 48 hosts current without a constant trickle of ssh traffic; staleness is
     # scaled to it so a host is never called stale merely because the next sweep has not run.
     fast_s: int = 120
-    stats_s: int = 240
     stale_after_s: int = 300
     collector_timeout_s: int = 25
     connect_timeout_s: int = 10  # opening the connection; a dead host fails here, not at the collector timeout
-    age_tick_s: int = 5
 
 
 @dataclass(slots=True)

@@ -147,7 +147,6 @@ async def settings(request: Request):
         "environments": [_environment_payload(state, e) for e in config.environments],
         "refresh": {
             "fast_s": config.refresh.fast_s,
-            "stats_s": config.refresh.stats_s,
             "stale_after_s": config.refresh.stale_after_s,
             "collector_timeout_s": config.refresh.collector_timeout_s,
             "connect_timeout_s": config.refresh.connect_timeout_s,
@@ -1027,7 +1026,6 @@ async def remove_tunnel(request: Request, name: str):
 
 class RefreshBody(BaseModel):
     fast_s: int = Field(ge=0, le=3600)
-    stats_s: int | None = Field(default=None, ge=0, le=86400)
     stale_after_s: int | None = Field(default=None, ge=5, le=86400)
     collector_timeout_s: int | None = Field(default=None, ge=5, le=300)
     connect_timeout_s: int | None = Field(default=None, ge=2, le=120)
@@ -1047,7 +1045,7 @@ async def set_refresh(request: Request, body: RefreshBody):
     state = _state(request)
     refresh = state.context.config.refresh
     refresh.fast_s = body.fast_s
-    for field_name in ("stats_s", "stale_after_s", "collector_timeout_s", "connect_timeout_s"):
+    for field_name in ("stale_after_s", "collector_timeout_s", "connect_timeout_s"):
         value = getattr(body, field_name)
         if value is not None:
             setattr(refresh, field_name, value)
@@ -1056,7 +1054,7 @@ async def set_refresh(request: Request, body: RefreshBody):
     await state.record_state("check intervals changed", source="web")
     state.wake()  # cut the current wait short so the new interval applies now
     state.context.audit.append("settings.refresh", status="ok", note=f"every {refresh.fast_s}s")
-    return {"ok": True, "refresh": {f: getattr(refresh, f) for f in ("fast_s", "stats_s", "stale_after_s", "collector_timeout_s", "connect_timeout_s")}}
+    return {"ok": True, "refresh": {f: getattr(refresh, f) for f in ("fast_s", "stale_after_s", "collector_timeout_s", "connect_timeout_s")}}
 
 
 @router.put("/thresholds")

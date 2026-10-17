@@ -179,8 +179,3 @@ async def test_per_bastion_concurrency_is_bounded(context, monkeypatch):
     await asyncio.gather(*(runner.run(h, "uptime") for h in hosts))
     assert live["peak"] <= 2
 
-
-async def test_fan_out_yields_results_as_they_complete(context):
-    hosts = context.inventory.hosts("testing")[:4]
-    seen = [result.alias async for result in context.runner.fan_out(hosts, "uptime")]
-    assert sorted(seen) == sorted(h.alias for h in hosts)

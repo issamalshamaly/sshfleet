@@ -113,7 +113,6 @@ export interface Snapshot {
   runtime: string;
   sudo_ok: boolean;
   containers: Container[];
-  missing_containers: string[];
   vanished_containers: string[];
   expected_count: number | null;
   listening: number[];
@@ -223,7 +222,6 @@ export interface EnvironmentSettings {
 
 export interface RefreshSettings {
   fast_s: number;
-  stats_s: number;
   stale_after_s: number;
   collector_timeout_s: number;
   connect_timeout_s: number;
