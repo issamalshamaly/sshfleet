@@ -436,7 +436,10 @@ def test_a_followed_line_keeps_its_timestamp_when_a_pattern_filters_it(inventory
     line = "2026-10-17T10:00:00.000000000Z [2026-10-17 10:00:00.000 +0000] ERROR: boom"
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "docker").write_text(f'#!/bin/sh\ncase "$1" in inspect) exit 0;; logs) echo {shlex.quote(line)};; esac\n')
+    # Both runtimes: with none on record the script takes podman first, and a machine with a real
+    # one in /usr/bin (GitHub's runners) would otherwise be asked instead of this fake.
+    for runtime in ("docker", "podman"):
+        (fake / runtime).write_text(f'#!/bin/sh\ncase "$1" in inspect) exit 0;; logs) echo {shlex.quote(line)};; esac\n')
     (fake / "sudo").write_text('#!/bin/sh\nwhile [ "$1" = "-n" ]; do shift; done\nexec "$@"\n')
     for entry in fake.iterdir():
         entry.chmod(0o755)
