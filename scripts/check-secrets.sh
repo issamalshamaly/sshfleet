@@ -19,7 +19,9 @@ if [ -f .check-secrets.local ]; then
     done < .check-secrets.local
 fi
 
-if git grep -nIE "$pattern" -- . ':!uv.lock' ':!scripts/check-secrets.sh' ':!web/pnpm-lock.yaml'; then
+# --untracked: a new file is checked before it is added, not only once it is committed. Ignored
+# files (.check-secrets.local itself, build output) stay out.
+if git grep --untracked -nIE "$pattern" -- . ':!uv.lock' ':!scripts/check-secrets.sh' ':!web/pnpm-lock.yaml'; then
     echo "check-secrets: the lines above look like secrets or personal paths." >&2
     status=1
 fi
