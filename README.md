@@ -463,35 +463,40 @@ Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing
 ## Safety
 
 * **Private keys are never read.** The tool records the path, checks the permissions with `stat`,
-  and lets `ssh` do the rest.
+  and lets `ssh` do the rest. A file that holds a key is not parsed as SSH configuration either,
+  whatever it is called (`tests/test_config.py`, `tests/test_private_files.py`).
 * **Running containers are only ever restarted.** `stop`, `kill`, `prune` and `down` cannot be
   built by the command layer at all, and a test greps the whole source to prove none appear.
   `rm` exists for one case: a container that is already stopped, checked on the host immediately
-  before the command, with its name typed back and its last log lines saved first.
+  before the command, with its name typed back and its last log lines saved first
+  (`tests/test_containers.py`).
 * **Secrets are not downloadable.** The deny list (keys, `.env` files, credentials, histories,
   `/proc`, docker and kube configs, …) is enforced in the transfer, preview and log code, not in
   the interface, and it cannot be switched off. A path is first resolved on the host, so a link
   is judged by what it leads to; only single files are fetched, never a directory; a log file
   glob never picks up a name on the list; and the Inspect action hides a container's environment
   variables. It is a guard against copying a secret by accident, not a boundary against someone
-  who already has a shell there.
+  who already has a shell there (`tests/test_files.py`, `tests/test_private_files.py`).
 * **What a request names never becomes a command.** Container names, paths, patterns and ports
   are quoted where they reach a shell and refused at the door when they cannot be what they
   claim; a read-only check over every generated log script would refuse one that slipped
-  through, and the tests run hostile names through real bash to prove none does.
+  through. The tests run hostile names through real bash, and generate hundreds more on every
+  run, to prove none does (`tests/test_logs_commands.py`, `tests/test_quoting_properties.py`).
 * **Your SSH config files are edited one stanza at a time**, never rewritten, and a copy of the
   whole file is kept before every change. Values are checked before they are written, so nothing
-  can smuggle a second keyword (a `ProxyCommand`, say) onto a line.
+  can smuggle a second keyword (a `ProxyCommand`, say) onto a line (`tests/test_sshedit.py`).
 * **Every change is recorded, and so is what was looked at.** Restarts, uploads, downloads,
   tunnel changes, opened shells, quick actions from start to end and every settings edit go to
   `~/.local/state/sshfleet/audit.jsonl`, with the folders listed, the files previewed and the
   logs searched or followed. Each line is linked to the one before; `sshfleet audit verify` checks
   the chain (`tests/test_audit_chain.py`).
 * **Every earlier configuration can be put back.** History keeps each state of `config.yaml` and
-  the SSH files. Restores and imports record the state before them, so either can be undone.
+  the SSH files. Restores and imports record the state before them, so either can be undone
+  (`tests/test_history.py`, `tests/test_restore.py`).
 * **A bundle never carries a key or a secret, and nothing in one runs on import.** Both are
   enforced in code and held by tests: an export seeded with every kind of secret contains none
-  of them, and a bundle with `ProxyCommand`, `Include` or `Match exec` is refused unless allowed.
+  of them, and a bundle with `ProxyCommand`, `Include` or `Match exec` is refused unless allowed
+  (`tests/test_bundle.py`, `tests/test_import.py`).
 * **Only a browser you let in gets the page, and with it the session token.** `sshfleet web`
   lets one in with a link that works once; any other request for the page gets a note. The
   server answers only to `127.0.0.1` and `localhost`, which stops a rebound DNS name from
