@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import fcntl
 import json
 import os
 import socket
@@ -21,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import Config, TunnelCfg
+from ..fsutil import atomic_write
 from ..ssh import MuxManager, SshError
 
 #: How long a closed forward may take to let go of its port before the close counts as failed.
@@ -151,9 +153,26 @@ class TunnelManager:
         except (OSError, json.JSONDecodeError):
             return {}
 
-    def _save(self, state: dict[str, dict]) -> None:
+    def _update(self, changes: dict[str, dict | None]) -> None:
+        """Set or drop (``None``) the records named, leaving every other one as it is on disk.
+
+        The CLI and the web server both write this file. It used to be read before a tunnel was
+        opened and written back whole afterwards, so whichever finished last undid the other's
+        change. Now each change is read, made and written in one step under a lock.
+        """
         self.state_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.state_file.write_text(json.dumps(state, indent=1))
+        lock = os.open(self.state_file.with_name(f".{self.state_file.name}.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            state = self._load()
+            for name, record in changes.items():
+                if record is None:
+                    state.pop(name, None)
+                else:
+                    state[name] = record
+            atomic_write(self.state_file, json.dumps(state, indent=1), mode=0o600)
+        finally:
+            os.close(lock)
 
     # ----------------------------------------------------------------- config
 
@@ -201,9 +220,9 @@ class TunnelManager:
         except SshError as exc:
             return self._state(tunnel, port, up=False, wanted=wanted, error=exc.message)
 
-        state[name] = {"local": port, "via": tunnel.via, "up": True, "since": time.time()}
-        self._save(state)
-        return self._state(tunnel, port, up=True, since=state[name]["since"], wanted=True)
+        since = time.time()
+        self._update({name: {"local": port, "via": tunnel.via, "up": True, "since": since}})
+        return self._state(tunnel, port, up=True, since=since, wanted=True)
 
     async def down(self, name: str) -> TunnelState:
         """Close a forward, and check that its port really was let go.
@@ -222,8 +241,7 @@ class TunnelManager:
                 await self.mux.cancel(tunnel.via, self.spec(tunnel, port))
             except SshError as exc:
                 refused = exc.message
-            state.pop(name, None)
-            self._save(state)
+            self._update({name: None})
             if await released(port):
                 return self._state(tunnel, port, up=False)
             holder = port_holder(port)
@@ -279,10 +297,8 @@ class TunnelManager:
         """
         state = self._load()
         names = sorted(name for name, tunnel in self.config.tunnels.items() if tunnel.via in aliases and name in state)
-        for name in names:
-            state.pop(name)
         if names:
-            self._save(state)
+            self._update(dict.fromkeys(names))
         return names
 
     def _state(

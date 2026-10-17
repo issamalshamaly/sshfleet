@@ -43,9 +43,12 @@ class Runner:
         self.attempts += 1
         if self.error is not None:
             raise self.error
+        # A session of its own, as proc.spawn gives ssh: ending a follow kills the process group,
+        # and without one that group would be pytest's.
         proc = await asyncio.create_subprocess_exec(
             "bash", "-c", self.script,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         return proc, contextlib.nullcontext()
 

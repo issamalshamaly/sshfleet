@@ -224,6 +224,10 @@ the sections after the summary say how each part works.
   same millisecond no longer overwrite each other's copy. Writes go through a symlink to the real
   file instead of replacing the link, and are flushed to disk before the rename.
 * Two reloads at once could interleave and report one another's changes; they now take turns.
+* A tunnel opened from the command line while the web server opened another could lose its
+  record, and a dropped tunnel without one is never reopened. Each change to `tunnels.json` is now
+  made under a lock, touching only its own record; it and the fleet cache are written whole or not
+  at all.
 * A container that was on a host and is gone now counts in the fleet summary, which always said
   none were, and turns the host red in `sshfleet fleet` and `sshfleet containers`. All three read
   a field the collector never filled.

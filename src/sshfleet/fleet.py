@@ -17,6 +17,7 @@ from .collector import HostSnapshot, collect, unreachable
 from .collector import alerts as alerts_module
 from .collector.model import Alert
 from .context import Context
+from .fsutil import atomic_write
 from .inventory import EnvScope, Host
 from .ssh.errors import ErrorKind, SshError
 
@@ -242,7 +243,8 @@ class FleetService:
             by_env.setdefault(snapshot.env, []).append(snapshot.to_dict())
         self.context.paths.fleet_state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         for env, payload in by_env.items():
-            self._state_file(env).write_text(json.dumps({"saved_at": time.time(), "hosts": payload}))
+            # Whole or not at all: a cache cut short would paint nothing at the next start.
+            atomic_write(self._state_file(env), json.dumps({"saved_at": time.time(), "hosts": payload}), mode=0o600)
 
     def load_cached(self) -> int:
         """Restore the cached snapshots (marked stale by their age, not by a flag)."""
