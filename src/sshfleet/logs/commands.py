@@ -84,13 +84,17 @@ def strip_quoted(script: str, data: Sequence[str] = ()) -> str:
     The values are removed by exact match on their quoted form rather than by tracking quote
     state, because shlex escapes an embedded quote as ``'"'"'``, which flips naive quote
     tracking and would leave the operator's text looking like shell code.
+
+    Only the quoted form is removed. A value that needs no quoting is its own quoted form, so it
+    goes too; one that does need quoting and still appears bare somewhere is exactly the mistake
+    this check exists for, and has to stay in view. Removing the bare form as well once hid a
+    container name pasted unquoted into an ``echo "…"``, where ``$(…)`` in it ran on the host.
     """
     out = script
     for value in data:
         if not value:
             continue
-        for form in (shlex.quote(value), value):
-            out = out.replace(form, " «data» ")
+        out = out.replace(shlex.quote(value), " «data» ")
     return out
 
 
@@ -125,6 +129,11 @@ class Pipeline:
 
     def stage_of(self, index: int) -> str:
         return self.stages[index] if 0 <= index < len(self.stages) else "?"
+
+
+def _missing_container(container: str) -> str:
+    """Report a container that is not there, and stop. The name is printed, never evaluated."""
+    return f'{{ echo "{ERROR_MARKER} missing_container "{shlex.quote(container)} >&2; exit 90; }}'
 
 
 def _runtime_expr(host: Host) -> str:
@@ -228,14 +237,14 @@ def container_stdout_pipeline(
         resolve = (
             f'C=$({sudo}"$RT" ps --format \'{{{{.Names}}}}\' 2>/dev/null '
             f"| grep -i -- {shlex.quote(pattern)} | head -1)\n"
-            f'[ -n "$C" ] || {{ echo "{ERROR_MARKER} missing_container {container}" >&2; exit 90; }}\n'
+            f'[ -n "$C" ] || {_missing_container(container)}\n'
         )
         check = ""
     else:
         resolve = ""
         check = (
             f'{sudo}"$RT" inspect --format \'{{{{.State.Status}}}}\' {quoted} >/dev/null 2>&1 '
-            f'|| {{ echo "{ERROR_MARKER} missing_container {container}" >&2; exit 90; }}\n'
+            f'|| {_missing_container(container)}\n'
         )
 
     script = (
@@ -424,9 +433,11 @@ def follow_pipeline(host: Host, source: LogSource, pattern: str = "", *, since: 
         f'RT={_runtime_expr(host)}\n'
         f'[ -n "$RT" ] || {{ echo "{ERROR_MARKER} no_runtime" >&2; exit 91; }}\n'
         f'{sudo}"$RT" inspect --format \'{{{{.State.Status}}}}\' {quoted} >/dev/null 2>&1 '
-        f'|| {{ echo "{ERROR_MARKER} missing_container {container}" >&2; exit 90; }}\n'
+        f'|| {_missing_container(container)}\n'
         + _assemble(parts)
     )
+    # Follow is built apart from build(), and was never checked: the same check, the same data.
+    assert_read_only(script, [pattern, container, since])
     return Pipeline(script, stages, source, f"follow {container}")
 
 

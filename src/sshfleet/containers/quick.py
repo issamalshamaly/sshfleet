@@ -14,17 +14,13 @@ curl. The operator sees a short, relevant list rather than the whole catalogue.
 
 from __future__ import annotations
 
-import re
 import shlex
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..inventory import Host
+from .names import NAME_RE
 from .runtime import RemoteCommand
-
-#: Container names the runtimes themselves accept. Anything else is refused before it reaches
-#: a shell, even though every part is quoted on the way out.
-NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 #: Where a Node service's code sits in these images, and the directory the toolkit action
 #: installs into when it is there.

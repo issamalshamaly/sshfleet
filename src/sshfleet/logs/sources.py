@@ -12,6 +12,7 @@ from __future__ import annotations
 from os.path import commonprefix
 
 from ..config import Config
+from ..containers.names import check_container_name
 from ..inventory import Host, Inventory
 from .model import LogFormat, LogSource, SourceKind
 
@@ -156,7 +157,12 @@ def journal_source(host: Host, unit: str = "docker.service") -> LogSource:
 
 
 def container_source_for(host: Host, container: str) -> LogSource:
-    """A source for one named workload, whatever its state."""
+    """A source for one named workload, whatever its state.
+
+    The name arrives from a request, a command line or a config file, and it ends up in a remote
+    command: anything that is not a container name (or a ``*`` wildcard for one) stops here.
+    """
+    check_container_name(container, glob=True)
     return LogSource(
         id=f"{host.env}/{host.alias}/{container}",
         kind=SourceKind.CONTAINER_STDOUT,

@@ -79,6 +79,10 @@
   the two download links and the terminal socket.
 * An `Include` glob in an SSH config file never opens a key, a public key or a backup. Before
   this, `Include ~/.ssh/*` read the private keys as if they were configuration.
+* A container name in a log search or a follow could run a command on the host: it was put
+  unquoted into the message for a container that is not there, so `x$(cmd)` ran `cmd`. Names are
+  now quoted there too, a name that is not a container name is refused before anything connects,
+  the read-only check no longer overlooks a value left unquoted, and follow is checked as well.
 
 ### Environments
 

@@ -180,6 +180,22 @@ async def test_log_search_streams_ndjson(web, fake_ssh):
     assert "ERROR: boom" in line["text"]
 
 
+async def test_log_search_refuses_a_container_name_that_is_a_command(web, fake_ssh):
+    client, _ = web
+    body = {
+        "env": "testing",
+        "selection": {"containers": [{"host": "tst-order", "name": "x$(touch /tmp/sshfleet-pwned)"}]},
+        "pattern": "",
+        "window": "1h",
+    }
+    for route in ("/api/logs/search", "/api/logs/follow"):
+        response = await client.post(route, json=body)
+        assert response.status_code == 400, route
+        assert "not a container name" in response.json()["detail"]
+    # Refused before any connection *for this name*; the refresh loop runs alongside.
+    assert [c for c in fake_ssh.calls() if "pwned" in json.dumps(c)] == []
+
+
 async def test_log_search_rejects_an_empty_selection(web):
     client, _ = web
     response = await client.post("/api/logs/search", json={"env": "testing", "selection": {}, "pattern": "x", "window": "1h"})

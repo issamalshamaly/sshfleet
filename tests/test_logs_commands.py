@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import subprocess
 from datetime import UTC, datetime
 
 import pytest
@@ -12,6 +13,7 @@ from helpers import make_config
 from sshfleet.inventory import build_inventory
 from sshfleet.logs import commands
 from sshfleet.logs.model import LogFormat, LogSource, SearchRequest, SourceKind, TimeWindow
+from sshfleet.logs.sources import container_source_for
 
 NOW = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
 
@@ -166,10 +168,95 @@ def test_pattern_starting_with_a_dash_is_passed_after_e(inventory, window):
     assert "-e -v --" in script
 
 
-def test_container_name_is_quoted(inventory, window):
-    source = stdout_source(container="weird name; rm -rf /")
+def test_container_name_is_quoted_everywhere(inventory, window):
+    """Quoted where it is used, and nowhere bare: an earlier version of this test only looked
+    for the quoted form, and passed while the same name sat unquoted in an ``echo`` below it."""
+    name = "weird name; rm -rf /"
+    source = stdout_source(container=name)
     script = commands.build(inventory.host("tst-order"), source, request(sources=(source,)), window).script
-    assert "'weird name; rm -rf /'" in script
+    assert shlex.quote(name) in script
+    assert name not in script.replace(shlex.quote(name), "")
+
+
+#: Names that are commands. `{mark}` is a file each one would create if it ever ran.
+HOSTILE_NAMES = ["x$(touch {mark})", "x`touch {mark}`", "*x$(touch {mark})*"]
+
+
+def _docker_with_no_containers(tmp_path):
+    """A local stand-in for the host: docker knows no containers, sudo just runs the command."""
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "docker").write_text('#!/bin/sh\ncase "$1" in inspect) exit 1;; *) exit 0;; esac\n')
+    (fake / "sudo").write_text('#!/bin/sh\nwhile [ "$1" = "-n" ]; do shift; done\nexec "$@"\n')
+    for entry in fake.iterdir():
+        entry.chmod(0o755)
+    return {"PATH": f"{fake}:/usr/bin:/bin", "HOME": str(tmp_path)}
+
+
+@pytest.mark.parametrize("follow", [False, True], ids=["search", "follow"])
+@pytest.mark.parametrize("template", HOSTILE_NAMES)
+def test_a_hostile_container_name_is_printed_never_run(inventory, window, tmp_path, template, follow):
+    """Regression: the name went bare into ``echo "… missing_container NAME"``, so ``$(…)`` or
+    backticks in it ran on the host as soon as the container turned out not to exist.
+
+    The source is made directly, past the name check, to test the quoting on its own. The script
+    is really run, against a docker that knows no containers, which is the path that echoed.
+    """
+    if follow and template.startswith("*"):
+        pytest.skip("follow names one container; it has no wildcard form")
+    mark = tmp_path / "ran"
+    name = template.format(mark=mark)
+    source = stdout_source(container=name)
+    host = inventory.host("tst-order")
+    if follow:
+        script = commands.follow_pipeline(host, source, "error").script
+    else:
+        script = commands.build(host, source, request(sources=(source,)), window).script
+    run = subprocess.run(
+        ["bash", "-s"], input=script, text=True, capture_output=True, env=_docker_with_no_containers(tmp_path), timeout=20
+    )
+    assert not mark.exists(), "the container name was executed"
+    assert run.returncode == 90, run.stderr
+    assert f"missing_container {name}" in run.stderr
+
+
+@pytest.mark.parametrize("template", HOSTILE_NAMES)
+def test_pipelines_for_odd_names_are_valid_shell(inventory, window, tmp_path, template):
+    name = template.format(mark=tmp_path / "ran")
+    source = stdout_source(container=name)
+    host = inventory.host("tst-order")
+    scripts = [commands.build(host, source, request(sources=(source,)), window).script]
+    if not name.startswith("*"):
+        scripts.append(commands.follow_pipeline(host, source, "error").script)
+    for script in scripts:
+        checked = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
+        assert checked.returncode == 0, checked.stderr
+
+
+@pytest.mark.parametrize("name", ["x$(id)", "x`id`", "*x$(id)*", "a b", "a;b", "a|b", "-rf", "x\ny", ""])
+def test_a_name_that_is_not_a_container_name_is_refused_at_the_door(inventory, name):
+    with pytest.raises(ValueError, match="not a container name"):
+        container_source_for(inventory.host("tst-order"), name)
+
+
+@pytest.mark.parametrize("name", ["order-production", "order-api_1.2", "a", "*kong*"])
+def test_real_names_and_wildcards_pass_the_door(inventory, name):
+    assert container_source_for(inventory.host("tst-order"), name).container == name
+
+
+def test_the_read_only_check_sees_a_value_left_unquoted():
+    """It used to remove each value in its bare form too, which hid exactly this mistake."""
+    value = "x$(rm -rf /tmp/z)"
+    with pytest.raises(commands.CommandRefused):
+        commands.assert_read_only(f'echo "missing {value}"', [value])
+    commands.assert_read_only(f"echo missing {shlex.quote(value)}", [value])  # quoted, it is data
+
+
+def test_follow_is_checked_like_a_search(inventory, monkeypatch):
+    checked = []
+    monkeypatch.setattr(commands, "assert_read_only", lambda script, data=(): checked.append(list(data)))
+    commands.follow_pipeline(inventory.host("tst-order"), stdout_source(), "error")
+    assert checked and "order-production" in checked[0] and "error" in checked[0]
 
 
 def test_secret_paths_are_refused_as_log_sources(inventory, window):
