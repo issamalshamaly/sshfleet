@@ -626,7 +626,8 @@ export default function FleetPage() {
       )}
 
       <Group gap="md" justify="space-between">
-        <Text size="xs" c="dimmed">
+        {/* A div: the badges are divs, which a <p> may not hold. */}
+        <Text size="xs" c="dimmed" component="div">
           {shown.length} of {inView.length} hosts · roles: <RoleBadge role="service" /> <RoleBadge role="gateway" /> <RoleBadge role="frontend" /> <RoleBadge role="data" /> <RoleBadge role="ops" />
         </Text>
         <Text size="xs" c="dimmed">
