@@ -1,7 +1,7 @@
 """Register an environment from an SSH config file.
 
-Shared by the CLI (``sshfleet env add``) and the TUI wizard. The key file is only ever
-``stat``-ed — its permissions are checked, its content is never read.
+Shared by the CLI (``sshfleet env add``) and the web interface's Settings. The key file is only
+ever ``stat``-ed — its permissions are checked, its content is never read.
 """
 
 from __future__ import annotations

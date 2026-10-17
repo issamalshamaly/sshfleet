@@ -1,6 +1,6 @@
 """``sshfleet`` entry point.
 
-Typer wires the sub-apps; heavy imports (Textual) stay inside the commands that need them so
+Typer wires the sub-apps; heavy imports stay inside the commands that need them so
 ``sshfleet fleet --json`` starts fast enough to use in a shell loop.
 """
 
@@ -24,12 +24,16 @@ from . import (
     service_cmds,
     tunnel_cmds,
 )
-from .output import Exit, fail
+from .output import Exit
 
 app = typer.Typer(
     name="sshfleet",
-    help="Fleet monitor and support tool for a fleet of servers reached over SSH.",
-    no_args_is_help=False,
+    help=(
+        "Fleet monitor and support tool for a fleet of servers reached over SSH.\n\n"
+        "Start with `sshfleet web` for the browser interface, or `sshfleet fleet` for the same "
+        "status in the terminal. `sshfleet doctor` checks the setup."
+    ),
+    no_args_is_help=True,
     add_completion=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
@@ -62,17 +66,21 @@ def version() -> None:
     typer.echo(__version__)
 
 
-@app.callback(invoke_without_command=True)
-def root(ctx: typer.Context) -> None:
-    """Run with no arguments to open the terminal UI."""
-    if ctx.invoked_subcommand is not None:
-        return
-    try:
-        from ..tui.app import run_tui
-    except ImportError as exc:  # pragma: no cover - textual missing
-        fail(f"the terminal UI is unavailable: {exc}")
-        raise typer.Exit(Exit.FAILED) from exc
-    run_tui()
+def _print_version(value: bool) -> None:
+    if value:
+        from .. import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
+@app.callback()
+def root(
+    version: bool = typer.Option(
+        False, "--version", help="Print the version and exit.", callback=_print_version, is_eager=True
+    ),
+) -> None:
+    """Options that apply before any command."""
 
 
 def main() -> None:

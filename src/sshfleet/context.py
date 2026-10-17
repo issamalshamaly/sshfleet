@@ -1,4 +1,4 @@
-"""The object graph shared by the CLI and the TUI.
+"""The object graph shared by the CLI and the web interface.
 
 Building a Context parses the config and the SSH config files and writes the generated
 ``ssh_config``; it opens no connection, so it is cheap enough for ``--help``-style commands.

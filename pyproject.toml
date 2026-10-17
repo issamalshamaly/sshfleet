@@ -22,7 +22,6 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-    "textual>=8.2,<9",
     "typer>=0.27",
     "httpx>=0.28",
     "pyyaml>=6",
@@ -40,7 +39,6 @@ Homepage = "https://github.com/issamalshamaly/sshfleet"
 Issues = "https://github.com/issamalshamaly/sshfleet/issues"
 
 [project.optional-dependencies]
-serve = ["textual-serve>=1.1"]
 desktop = [
     "pywebview>=6.2.1",
 ]
@@ -49,7 +47,6 @@ desktop = [
 dev = [
     "pytest>=9",
     "pytest-asyncio>=1.4",
-    "textual-dev>=1.8",
     "ruff>=0.14",
     "mypy>=1.14",
     "types-pyyaml>=6",
@@ -79,8 +76,6 @@ ignore = [
     "RUF001",
     "RUF002",
     "RUF003",
-    # BINDINGS / COMMANDS are Textual's documented class-attribute API.
-    "RUF012",
 ]
 
 [tool.mypy]

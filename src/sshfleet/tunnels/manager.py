@@ -2,7 +2,7 @@
 
 ``ssh -O forward`` adds a forward to a connection that is already open, so opening the Kibana or
 Seq tunnel costs nothing extra and closing it does not disturb anything else. The state file is
-shared between the CLI and the TUI so both see the same tunnels.
+shared between the CLI and the web interface so both see the same tunnels.
 
 A record in the state file is the operator's intent: it is written when a tunnel is opened and
 removed only when it is closed. So a record whose port nobody holds is a tunnel that dropped by

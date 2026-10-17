@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Command line
+
+* `sshfleet` on its own prints help and says where to start (`web`, `fleet`, `doctor`); it used
+  to open the older terminal interface, which is gone — the web interface does everything it
+  did and much more, and `textual` is no longer a dependency. `sshfleet --version` prints the
+  version.
+* `sshfleet hosts` crashed on any inventory; it lists the hosts again, with their label and a
+  star for the ones in the default log search.
+
 ### Phones and tablets
 
 * The whole web interface works on phones and tablets. Below 768px the sidebar, which used to

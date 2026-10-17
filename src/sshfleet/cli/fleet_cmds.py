@@ -1,4 +1,4 @@
-"""``sshfleet fleet`` and ``sshfleet host`` — fleet status without the TUI."""
+"""``sshfleet fleet`` and ``sshfleet host`` — fleet status in the terminal."""
 
 from __future__ import annotations
 

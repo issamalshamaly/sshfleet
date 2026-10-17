@@ -32,7 +32,7 @@ def doctor(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
 
 def hosts(
     env: Annotated[str | None, typer.Option("--env", "-e", help="Restrict to one environment.")] = None,
-    service: Annotated[str | None, typer.Option("--service", "-s", help="Restrict to one service.")] = None,
+    service: Annotated[str | None, typer.Option("--service", "-s", help="Restrict to one log label or alias.")] = None,
     role: Annotated[str | None, typer.Option("--role", help="Restrict to one role (service, gateway, frontend, data, ops).")] = None,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -72,13 +72,13 @@ def hosts(
             d["hostname"] or "",
             d["user"] or "",
             d["via"] or ("(bastion)" if d["bastion"] else ""),
-            d["service"] or "—",
+            d["label"] or "—",
             d["role"],
-            "yes" if d["main"] else "",
+            "★" if d["main"] else "",
         ]
         for d in data
     ]
-    console.print(table("Hosts", ["alias", "env", "address", "user", "via", "service", "role", "expected containers"], rows))
+    console.print(table("Hosts", ["alias", "env", "address", "user", "via", "label", "role", "default logs"], rows))
     raise typer.Exit(Exit.OK if data else Exit.NO_RESULTS)
 
 

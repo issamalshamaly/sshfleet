@@ -404,7 +404,7 @@ the prompt appears immediately.
 | `sshfleet web [--port] [--no-open]` | the web interface |
 | `sshfleet desktop [--port]` | the web interface in its own window |
 | `service install · uninstall · status · start · stop · restart · logs` | the web interface as a background service |
-| `sshfleet` (no subcommand) | the older terminal interface |
+| `sshfleet` (no subcommand), `sshfleet --version` | help, and the version |
 | `project add · list · rename · remove` | group environments under a project |
 | `env add · list · test · remove · preview` | register and check environments |
 | `fleet [--env] [--main] [--alerts] [--json]` | fleet status as a table |
