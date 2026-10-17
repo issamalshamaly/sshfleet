@@ -1,0 +1,65 @@
+name: release
+
+# Pushing a version tag (v0.1.0) builds the package once, publishes that very build to PyPI by
+# trusted publishing (PyPI trusts this workflow; no token is stored anywhere) and attaches the
+# same files to a GitHub release, with that version's section of CHANGELOG.md as its notes.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: the tag names the version in pyproject.toml
+        run: |
+          version=$(uv version --short)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME, but pyproject.toml says $version"; exit 1; }
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/sshfleet
+    permissions:
+      id-token: write  # what trusted publishing proves itself with
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github:
+    needs: pypi
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write  # to create the release
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## /{if (p) exit; if (index($0, "## " v) == 1) p=1; next} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}

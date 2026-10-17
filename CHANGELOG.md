@@ -43,6 +43,12 @@ the sections after the summary say how each part works.
   behind each, and why one would pick something else. The reference it held is in `docs/`: a
   guide to every page and command, the configuration, and how it works.
 
+### Releases
+
+* A version tag publishes: `release.yml` builds once, publishes that build to PyPI by trusted
+  publishing (no token kept anywhere) and attaches the same files to a GitHub release. A tag that
+  does not match `pyproject.toml` is refused.
+
 ### Demo
 
 * `sshfleet demo` runs the real interface on a made-up fleet: Acme, an online shop, twelve hosts on

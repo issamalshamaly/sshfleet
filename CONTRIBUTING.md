@@ -93,6 +93,22 @@ web/           React + Mantine + Vite source of the interface
 tests/         pytest, offline
 ```
 
+## Releasing
+
+A version tag publishes. `.github/workflows/release.yml` builds the package once, publishes that
+build to PyPI by trusted publishing and attaches the same files to a GitHub release, with that
+version's section of the changelog as its notes.
+
+1. Set the version in `pyproject.toml` and `src/sshfleet/__init__.py` (a test holds them equal),
+   and give its CHANGELOG section a date.
+2. Commit, then `git tag -a v0.1.0 -m "sshfleet 0.1.0"` and `git push origin v0.1.0`. The workflow
+   refuses a tag that does not match `pyproject.toml`.
+
+Once, before the first release: on PyPI, add a trusted publisher for the project (owner
+`issamalshamaly`, repository `sshfleet`, workflow `release.yml`, environment `pypi`), and on
+GitHub create the `pypi` environment, ideally with a required reviewer so a tag alone cannot
+publish.
+
 ## Pull requests
 
 One change per PR, with a test that fails without it. Keep the UI copy in plain words — the

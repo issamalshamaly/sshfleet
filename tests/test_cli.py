@@ -93,3 +93,14 @@ def test_a_container_that_is_gone_turns_the_fleet_table_red():
     snapshot.vanished_containers = ["order-production"]
     assert _containers_cell(snapshot).style == "red"
     assert "missing_containers" not in snapshot.to_dict(), "one name for one thing"
+
+
+def test_the_package_and_pyproject_agree_on_the_version():
+    """The release workflow checks the tag against pyproject.toml; --version reads the package."""
+    import tomllib
+    from pathlib import Path
+
+    from sshfleet import __version__
+
+    project = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())["project"]
+    assert project["version"] == __version__
