@@ -2,14 +2,14 @@
 
 [![ci](https://github.com/issamalshamaly/sshfleet/actions/workflows/ci.yml/badge.svg)](https://github.com/issamalshamaly/sshfleet/actions/workflows/ci.yml)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
-[![licence: MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-green)](https://github.com/issamalshamaly/sshfleet/blob/main/LICENSE)
 
 **A web console on your own computer for the servers you already reach over SSH.** Every host at
 a glance, a container restarted and checked until it is really back, several services' logs
 searched in one time window, files, tunnels and a shell, all through the `ssh` you already have.
 Nothing is installed on the servers, nothing listens beyond your machine, and no key is ever read.
 
-![sshfleet on its demo fleet: the fleet with its alerts, a bastion going down and coming back, a container restarted and verified, a search across three services](docs/images/demo.gif)
+![sshfleet on its demo fleet: the fleet with its alerts, a bastion going down and coming back, a container restarted and verified, a search across three services](https://github.com/issamalshamaly/sshfleet/raw/main/docs/images/demo.gif)
 
 ## Who it is for
 
@@ -56,11 +56,11 @@ sshfleet env add --name production --ssh-config ~/.ssh/config.d/production \
 sshfleet doctor
 ```
 
-The [guide](docs/guide.md#first-run) has the whole first run, and everything after it.
+The [guide](https://github.com/issamalshamaly/sshfleet/blob/main/docs/guide.md#first-run) has the whole first run, and everything after it.
 
 ## What you get
 
-![The fleet: twelve hosts with load, memory, disk, containers and health, alerts first](docs/images/fleet.png)
+![The fleet: twelve hosts with load, memory, disk, containers and health, alerts first](https://github.com/issamalshamaly/sshfleet/raw/main/docs/images/fleet.png)
 
 * **Fleet.** Every host with load, memory, disk, its containers and a health probe, filled in row
   by row as hosts answer. Alerts come first: a disk filling up, a container that crashed or keeps
@@ -84,7 +84,7 @@ The [guide](docs/guide.md#first-run) has the whole first run, and everything aft
 * **Every page on a phone too**, over an SSH tunnel to your computer.
 * **A command line for scripts**, with `--json` and exit codes that mean something.
 
-![A search for timeout|ECONNREFUSED across the main services: matches highlighted, one timeline](docs/images/logs.png)
+![A search for timeout|ECONNREFUSED across the main services: matches highlighted, one timeline](https://github.com/issamalshamaly/sshfleet/raw/main/docs/images/logs.png)
 
 ## Safety
 
@@ -130,10 +130,10 @@ The [guide](docs/guide.md#first-run) has the whole first run, and everything aft
   The token is accepted in an address only on the two download links and the terminal socket
   (`tests/test_web_session.py`, `tests/test_security.py`).
 
-[SECURITY.md](SECURITY.md) lists every command sshfleet runs with `sudo` on a server, what it sets
+[SECURITY.md](https://github.com/issamalshamaly/sshfleet/blob/main/SECURITY.md) lists every command sshfleet runs with `sudo` on a server, what it sets
 for every SSH connection and what it leaves to your own files, and how to report a problem.
 
-![A restart on production: the name typed back, the command shown, then verified running with the health endpoint answering](docs/images/restart.png)
+![A restart on production: the name typed back, the command shown, then verified running with the health endpoint answering](https://github.com/issamalshamaly/sshfleet/raw/main/docs/images/restart.png)
 
 ## How it works
 
@@ -142,7 +142,7 @@ every page, command and tunnel, the bastion hop included. Each check streams a s
 through it that prints one JSON document: no agent, no `jq`, no interpreter on the server. On a
 two-container host a check costs about 0.12 CPU-seconds; a fleet of 48 hosts refreshes in about a
 second once the connections are warm, and a dead bastion costs one timeout, not one per host
-behind it. [How it works](docs/how-it-works.md) has the detail, and what happens when your laptop
+behind it. [How it works](https://github.com/issamalshamaly/sshfleet/blob/main/docs/how-it-works.md) has the detail, and what happens when your laptop
 sleeps.
 
 ## Why not …
@@ -168,12 +168,12 @@ all; `curl` is used for health checks when it is there.
 
 ## Documentation
 
-* [Guide](docs/guide.md): the first run, every page, settings, history and sharing, running it as
+* [Guide](https://github.com/issamalshamaly/sshfleet/blob/main/docs/guide.md): the first run, every page, settings, history and sharing, running it as
   a service, every command.
-* [Configuration](docs/configuration.md): `config.yaml`, and extending sshfleet to another stack.
-* [How it works](docs/how-it-works.md): what a check costs, why it is fast, a sleeping laptop.
-* [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+* [Configuration](https://github.com/issamalshamaly/sshfleet/blob/main/docs/configuration.md): `config.yaml`, and extending sshfleet to another stack.
+* [How it works](https://github.com/issamalshamaly/sshfleet/blob/main/docs/how-it-works.md): what a check costs, why it is fast, a sleeping laptop.
+* [Security](https://github.com/issamalshamaly/sshfleet/blob/main/SECURITY.md) · [Changelog](https://github.com/issamalshamaly/sshfleet/blob/main/CHANGELOG.md) · [Contributing](https://github.com/issamalshamaly/sshfleet/blob/main/CONTRIBUTING.md)
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](https://github.com/issamalshamaly/sshfleet/blob/main/LICENSE).

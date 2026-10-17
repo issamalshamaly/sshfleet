@@ -37,6 +37,8 @@ sshfleet = "sshfleet.cli.main:main"
 [project.urls]
 Homepage = "https://github.com/issamalshamaly/sshfleet"
 Issues = "https://github.com/issamalshamaly/sshfleet/issues"
+Documentation = "https://github.com/issamalshamaly/sshfleet/blob/main/docs/guide.md"
+Changelog = "https://github.com/issamalshamaly/sshfleet/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 desktop = [
