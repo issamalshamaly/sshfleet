@@ -90,6 +90,10 @@
 * A host's health port from a hand-edited config or an imported bundle reached a script on the
   host unchecked, where a value like `1;cmd` ran `cmd` on a host without curl. It must now be a
   port number when the config is read, and the script and the restart check accept only digits.
+* When rsync is missing on a host, a download or upload falls back to scp, whose older protocol
+  hands the remote path to the host's shell. A path with characters a shell acts on is no longer
+  given to it (the result says why), and the copy staged in /tmp for a root-owned upload gets a
+  name made of safe characters.
 
 ### Environments
 

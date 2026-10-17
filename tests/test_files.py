@@ -156,3 +156,76 @@ def test_rsync_progress_parsing():
     assert match
     assert int(match.group(1).replace(b",", b"")) == 1234567
     assert int(match.group(2)) == 42
+
+
+# ----------------------------------------------------------- the scp fallback
+
+
+@pytest.mark.parametrize(
+    ("path", "safe"),
+    [
+        ("/var/log/app.log", True),
+        ("/home/ubuntu/report 2026.csv", True),
+        ("/tmp/x$(id)", False),
+        ("/tmp/a`id`", False),
+        ("/tmp/a;id", False),
+        ("/tmp/a|id", False),
+        ("/tmp/a\nb", False),
+        ("/tmp/a\\b", False),
+        ("/tmp/*.log", False),
+    ],
+)
+def test_which_paths_scp_may_be_given(path, safe):
+    from sshfleet.files.transfer import _scp_path_is_safe
+
+    assert _scp_path_is_safe(path) is safe
+
+
+def test_the_staging_copy_has_a_name_made_of_safe_characters():
+    from sshfleet.files.transfer import _staging_name
+
+    assert _staging_name("x$(id).txt") == "x__id_.txt"
+    assert _staging_name("report-2026_v2.csv") == "report-2026_v2.csv"
+    assert _staging_name("") == "upload"
+
+
+@pytest.fixture
+def rsync_missing_on_the_host(monkeypatch):
+    """rsync fails the way it does when the host has none; scp only records that it was asked."""
+    from sshfleet.ssh import argv as A
+
+    asked: list[list[str]] = []
+    monkeypatch.setattr(A, "rsync_argv", lambda *a, **k: ["sh", "-c", "echo 'rsync: not found' >&2; exit 127"])
+
+    def scp(_config, sources, destination, **_):
+        asked.append([*sources, destination])
+        return ["sh", "-c", "exit 1"]
+
+    monkeypatch.setattr(A, "scp_argv", scp)
+    return asked
+
+
+async def test_a_download_does_not_hand_scp_a_path_a_shell_would_run(context, tmp_path: Path, rsync_missing_on_the_host):
+    """Legacy scp passes the remote path through the host's shell; rsync -s never did."""
+    from sshfleet.files import download
+
+    host = context.inventory.host("tst-order")
+    result = await download(context.runner, host, "/tmp/x$(id).log", tmp_path / "out")
+    assert not result.ok
+    assert "scp was not tried" in result.message
+    assert rsync_missing_on_the_host == []
+
+    await download(context.runner, host, "/var/log/app.log", tmp_path / "out")
+    assert rsync_missing_on_the_host == [["tst-order:/var/log/app.log", str(tmp_path / "out")]]
+
+
+async def test_an_upload_does_not_hand_scp_a_path_a_shell_would_run(context, tmp_path: Path, rsync_missing_on_the_host):
+    from sshfleet.files import upload
+
+    local = tmp_path / "payload.txt"
+    local.write_text("hello")
+    host = context.inventory.host("tst-order")
+    result = await upload(context.runner, host, local, "/tmp/x`id`.txt")
+    assert not result.ok
+    assert "scp was not tried" in result.message
+    assert rsync_missing_on_the_host == []

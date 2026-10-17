@@ -66,6 +66,25 @@ def _refuse_paused(runner: SshRunner, host: Host) -> None:
         raise SshError(ErrorKind.PAUSED, host.alias, reason)
 
 
+#: Characters a remote shell acts on. rsync runs with -s and SFTP-mode scp passes the path as
+#: data, but scp speaking the legacy protocol (the default before OpenSSH 9) hands the remote
+#: path to the host's shell, where `$(…)` in a file name would run.
+_SHELL_SPECIAL = frozenset("$`\\\"';&|<>(){}*?[]!~")
+
+#: Why the scp fallback was skipped, said in the result instead of trying it anyway.
+_SCP_REFUSED = "scp was not tried: the path has characters a remote shell would act on"
+
+
+def _scp_path_is_safe(path: str) -> bool:
+    """Whether ``path`` can go to scp as a remote path without a remote shell acting on it."""
+    return not any(ch in _SHELL_SPECIAL or ord(ch) < 32 or ch == "\x7f" for ch in path)
+
+
+def _staging_name(name: str) -> str:
+    """A name for the copy left in /tmp before ``sudo install``, made of safe characters only."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", name)[:80] or "upload"
+
+
 def download_dir_for(base: Path, host: Host) -> Path:
     return base / host.env / host.alias / time.strftime("%Y%m%d-%H%M%S")
 
@@ -142,7 +161,9 @@ async def download(
     rsync_failed_remotely = proc.returncode in {12, 127} or "rsync: not found" in stderr or "command not found" in stderr
 
     # 2. scp: no progress, but present everywhere.
-    if rsync_failed_remotely or proc.returncode == 23:
+    if (rsync_failed_remotely or proc.returncode == 23) and not _scp_path_is_safe(remote_path):
+        stderr = f"{stderr.rstrip()}\n{_SCP_REFUSED}"
+    elif rsync_failed_remotely or proc.returncode == 23:
         scp = A.scp_argv(runner.ssh_config, [source], str(destination))
         result = await proc_module.run(scp, timeout=timeout)
         if result.returncode == 0 and destination.exists():
@@ -202,6 +223,9 @@ async def upload(
         return TransferResult(str(local_path), destination, size, "rsync", time.monotonic() - started, True)
 
     stderr = err.decode(errors="replace")
+    if not _scp_path_is_safe(remote_path):
+        message = f"{stderr.strip()[:300]}\n{_SCP_REFUSED}".strip()
+        return TransferResult(str(local_path), destination, 0, "rsync", time.monotonic() - started, False, message)
     scp = A.scp_argv(runner.ssh_config, [str(local_path)], destination)
     result = await proc_module.run(scp, timeout=timeout)
     if result.returncode == 0:
@@ -211,7 +235,7 @@ async def upload(
     # Root-owned target: land in /tmp, then install with the original mode and owner.
     if host.sudo and "Permission denied" in stderr:
         original = await stat_file(runner, host, remote_path)
-        staging = f"/tmp/sshfleet-{int(time.time())}-{local_path.name}"
+        staging = f"/tmp/sshfleet-{int(time.time())}-{_staging_name(local_path.name)}"
         staged = await proc_module.run(
             A.scp_argv(runner.ssh_config, [str(local_path)], f"{host.alias}:{staging}"), timeout=timeout
         )
