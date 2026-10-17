@@ -58,6 +58,11 @@ class Paths:
         return self.state_dir / "history"
 
     @property
+    def web_session_file(self) -> Path:
+        """The web interface's session token and cookie value, see web/session.py."""
+        return self.state_dir / "web-session.json"
+
+    @property
     def tunnels_file(self) -> Path:
         return self.cache_dir / "tunnels.json"
 

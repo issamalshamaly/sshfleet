@@ -141,9 +141,16 @@ tested, edited or removed, because a project is the only place they are looked a
 `sshfleet desktop` shows the same pages in a window of their own: pywebview when it has a GUI
 backend (on Linux that means GTK or Qt Python bindings, e.g. `pip install pywebview[qt]`),
 otherwise a Chromium-family browser in app mode, otherwise any browser. If `sshfleet web` is
-already running, the window opens onto it. Nothing listens on the network: the server binds to localhost
-only, and every request must carry a random token minted at start-up. The token is embedded in the
-page the server hands to your browser, so a page from any other origin cannot talk to it.
+already running, the window opens onto it. Nothing listens on the network: the server binds to
+localhost only.
+
+The page is only served to a browser you have let in. `sshfleet web` opens it through a link that
+works once, within ten minutes, and the browser keeps a cookie from it; another user or program
+on the same computer that asks for the page gets a note saying how to get in. Every request from
+the page carries a token in a header, so a page from any other origin cannot talk to the server
+either. A bookmark keeps working, across restarts too. To let in another browser, run
+`sshfleet web` again, or `sshfleet web --no-open` for a link to paste. Deleting
+`~/.local/state/sshfleet/web-session.json` signs every browser out at the next start.
 
 Pages:
 
@@ -204,8 +211,9 @@ computer running sshfleet:
 ssh -L 8765:127.0.0.1:8765 you@your-computer
 ```
 
-then open `http://127.0.0.1:8765` in the device's browser. The page carries its token as it
-always does, and nothing on the computer has to listen beyond localhost.
+then, in that same SSH session, run `sshfleet web --no-open`: it prints a link that lets one
+browser in. Open it in the device's browser, which stays in afterwards. Nothing on the computer
+has to listen beyond localhost.
 
 ## Starting and stopping
 
@@ -475,9 +483,12 @@ Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing
 * **A bundle never carries a key or a secret, and nothing in one runs on import.** Both are
   enforced in code and held by tests: an export seeded with every kind of secret contains none
   of them, and a bundle with `ProxyCommand`, `Include` or `Match exec` is refused unless allowed.
-* **The page talks to the server with a session token in a header.** It answers only to
-  `127.0.0.1` and `localhost`, which stops a rebound DNS name from fetching the page. The token
-  is accepted in an address only on the two download links and the terminal socket.
+* **Only a browser you let in gets the page, and with it the session token.** `sshfleet web`
+  lets one in with a link that works once; any other request for the page gets a note. The
+  server answers only to `127.0.0.1` and `localhost`, which stops a rebound DNS name from
+  fetching the page, refuses a terminal socket opened by any other page, and forbids framing.
+  The token is accepted in an address only on the two download links and the terminal socket
+  (`tests/test_web_session.py`, `tests/test_security.py`).
 
 ## Configuration
 

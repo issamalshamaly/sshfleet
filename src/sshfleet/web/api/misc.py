@@ -91,3 +91,10 @@ async def health(request: Request):
         "refreshing": state.fleet.state.refreshing,
         "last_refresh": state.fleet.state.last_refresh,
     }
+
+
+@router.post("/session/launch")
+async def launch_link(request: Request) -> dict[str, str]:
+    """A fresh launch link, for `sshfleet web` or `sshfleet desktop` run again while this server
+    is up. Behind the token, which only this user's processes can read from the session file."""
+    return {"path": f"/?launch={_state(request).launch.issue()}"}

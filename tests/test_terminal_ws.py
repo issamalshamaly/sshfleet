@@ -14,7 +14,7 @@ import threading
 import pytest
 import uvicorn
 from websockets.asyncio.client import connect
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from sshfleet.web import create_app
 from sshfleet.web.server import WS_IMPLEMENTATION
@@ -110,6 +110,21 @@ async def test_typing_still_works(live):
             await socket.send(char.encode())
         seen = await _read_until(socket, 2, "whoami", timeout=15)
     assert seen.count("whoami") >= 2  # the tty echoes it, then cat writes it back
+
+
+async def test_a_page_on_another_site_cannot_open_a_terminal(live):
+    """Unlike fetch, a WebSocket is not held back by CORS: the browser names the page that opens
+    it, and the server must refuse every page but its own, token or not."""
+    port, token = live
+    for origin in ("http://evil.example", f"http://127.0.0.1:{port + 1}", "null"):
+        with pytest.raises(InvalidStatus) as refused:
+            async with connect(_url(port, token), origin=origin):
+                pass
+        assert refused.value.response.status_code == 403, origin
+    # The page this server served gets its terminal.
+    async with connect(_url(port, token), origin=f"http://127.0.0.1:{port}") as socket:
+        await socket.send(b"x\n")
+        await _read_until(socket, 1, "x", timeout=15)
 
 
 def _quick_url(port: int, token: str, action: str, container: str) -> str:

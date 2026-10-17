@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import secrets
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -25,6 +24,7 @@ from ..fleet import FleetService
 from ..history import History, StateRecord, apply_restore, plan_restore, restored_reason, tracked_files
 from ..inventory import EnvScope, PausedBy, build_inventory
 from ..tunnels import TunnelManager, TunnelWatcher
+from .session import LaunchCodes, ensure_keys
 
 QUEUE_SIZE = 2000
 
@@ -92,7 +92,12 @@ class WebState:
         self.tunnels = TunnelManager(context.config, context.mux, context.paths.tunnels_file)
         self.events = Broadcaster()
         self.tunnel_watch = TunnelWatcher(self.tunnels, self.events.publish, context.audit.append)
-        self.token = secrets.token_urlsafe(24)
+        keys, warning = ensure_keys(context.paths.web_session_file)
+        if warning:
+            context.warnings.append(warning)
+        self.keys = keys
+        self.token = keys.token
+        self.launch = LaunchCodes()
         self.jobs: dict[str, Job] = {}
         self._refresh_lock = asyncio.Lock()
         # One writer of the configuration at a time. Held by the task inside it, see config_lock.

@@ -54,6 +54,14 @@ def _status_json(manager: Supervisor, status: Status) -> dict[str, object]:
     }
 
 
+def _address(url: str) -> str:
+    """The address, and how to get a browser in: the page is only served to one let in by a
+    launch link, which ``sshfleet web`` hands out while the service runs."""
+    port = url.rsplit(":", 1)[-1].rstrip("/")
+    command = "sshfleet web" if port == str(DEFAULT_PORT) else f"sshfleet web --port {port}"
+    return f"{url} [dim]· open it with[/dim] [bold]{command}[/bold]"
+
+
 def _print_status(manager: Supervisor, status: Status) -> None:
     _row("service", _state(status) + (f" · {status.detail}" if status.detail else ""))
     if not status.installed:
@@ -66,7 +74,7 @@ def _print_status(manager: Supervisor, status: Status) -> None:
     if status.restarts:
         _row("restarts", str(status.restarts))
     if status.url:
-        _row("address", status.url)
+        _row("address", _address(status.url))
     _row("output", manager.logs_hint())
 
 
@@ -127,7 +135,7 @@ def install(
         _row("starts", "at login — and it is running now" + (", and while you are logged out" if at_boot else ""))
     else:
         _row("starts", "at login")
-    _row("address", plan.url)
+    _row("address", _address(plan.url))
     _row("output", manager.logs_hint())
     if plan.note:
         console.print(f"[yellow]note[/yellow] {plan.note}")

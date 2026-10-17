@@ -13,6 +13,7 @@ const LABELS: Record<string, string> = {
   "tunnel.dropped": "Tunnel dropped",
   "tunnel.reopen": "Tunnel reopened",
   "ssh.open": "Shell opened",
+  "web.open": "Browser let in",
   "mux.reset": "Connections reset",
   "mux.stop": "Connections closed",
   "env.add": "Environment registered",

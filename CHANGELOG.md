@@ -127,6 +127,14 @@ the sections after the summary say how each part works.
 
 ### Security
 
+* The page, and the session token in it, is only served to a browser you have let in. Before,
+  any user or program on the computer could ask for `http://127.0.0.1:8765/`, read the token out
+  of the page and have the API, terminal included. `sshfleet web` now opens the page through a
+  link that works once, within ten minutes, and the browser keeps a cookie from it; a bookmark
+  keeps working across restarts, and `sshfleet web` run again lets in another browser. Everyone
+  else gets a note saying how to get in. A terminal socket opened by any other page is refused,
+  and every response says the page may not be framed, may only load from itself and sends no
+  referrer.
 * The web server answers only to `127.0.0.1` and `localhost`, so a page that points its own name
   at this machine (DNS rebinding) cannot fetch the page that carries the session token. The token
   is compared in constant time and read from the request header. An address is accepted only on

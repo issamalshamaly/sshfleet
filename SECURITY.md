@@ -12,8 +12,13 @@
   `id_rsa*`, `authorized_keys`, …). The deny list is enforced in the transfer code.
 * It never adds to your `~/.ssh/config` without you pressing the button that says so, and it
   keeps a backup first.
-* The web server binds to `127.0.0.1` only. Every request must carry a per-session token that is
-  minted at start-up and embedded in the page the server serves, so no other origin can call it.
+* The web server binds to `127.0.0.1` only, and answers only to the names `127.0.0.1` and
+  `localhost`. The page is served only to a browser let in by a link `sshfleet web` hands out,
+  which works once, within ten minutes; other users and programs on the same computer get a note
+  instead. Every request from the page must carry the session token in a header, so no other
+  origin can call it, and the terminal socket refuses any page but its own. The token and the
+  cookie value are kept in `~/.local/state/sshfleet/web-session.json` (0600); delete it to sign
+  every browser out at the next start.
 * Everything it changes is written to an audit log under `~/.local/state/sshfleet/`.
 
 ## Reporting a vulnerability

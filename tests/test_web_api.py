@@ -19,15 +19,6 @@ async def test_api_requires_the_session_token(web):
     await bare.aclose()
 
 
-async def test_index_embeds_the_token(web):
-    client, state = web
-    response = await client.get("/")
-    # Without a built frontend the server explains what to do; with one it embeds the token.
-    assert response.status_code in {200, 503}
-    if response.status_code == 200:
-        assert state.token in response.text
-
-
 async def test_config_lists_environments(web):
     client, _ = web
     data = (await client.get("/api/config")).json()
@@ -294,7 +285,7 @@ async def test_refresh_waits_for_a_running_sweep_instead_of_racing_it(web):
 async def test_spa_fallback_never_serves_files_outside_static(web):
     client, _ = web
     response = await client.get("/../../etc/passwd")
-    assert response.status_code in {200, 404, 503}
+    assert response.status_code in {200, 401, 404, 503}
     assert "root:" not in response.text
 
 
@@ -517,7 +508,7 @@ async def test_an_environment_path_with_a_line_break_is_refused(web, tmp_path):
     assert response.status_code == 422
 
 
-def test_web_on_a_taken_port_says_who_has_it(monkeypatch):
+def test_web_on_a_taken_port_says_who_has_it(monkeypatch, ops_home):
     """It used to print uvicorn's "[Errno 98]" and then announce the address as if it had started."""
     import socket
 
@@ -532,10 +523,19 @@ def test_web_on_a_taken_port_says_who_has_it(monkeypatch):
         with pytest.raises(SystemExit, match=f"port {port} is taken by another program"):
             server.run_web(port=port, open_browser=False)
 
-        # Our own server on it: say so and stop, rather than fail.
-        monkeypatch.setattr(server, "_already_serving", lambda _port: (True, False))
+        # Our own server on it: say so and hand over a way in, rather than fail.
+        handed: list[str] = []
+        monkeypatch.setattr(server, "_hand_over", lambda link, _open: handed.append(link))
+        link = f"http://127.0.0.1:{port}/?launch=fresh"
+        monkeypatch.setattr(server, "_running", lambda _port, _paths: server.Running(stale=False, link=link))
         assert server.run_web(port=port, open_browser=False) is None
+        assert handed == [link]
 
-        monkeypatch.setattr(server, "_already_serving", lambda _port: (True, True))
+        monkeypatch.setattr(server, "_running", lambda _port, _paths: server.Running(stale=True, link=None))
         with pytest.raises(SystemExit, match="older sshfleet"):
+            server.run_web(port=port, open_browser=False)
+
+        # One that keeps another configuration's keys cannot be opened from here, and says so.
+        monkeypatch.setattr(server, "_running", lambda _port, _paths: server.Running(stale=False, link=None))
+        with pytest.raises(SystemExit, match="configuration other than this one"):
             server.run_web(port=port, open_browser=False)
