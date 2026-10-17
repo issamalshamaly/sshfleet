@@ -56,8 +56,10 @@ class Runner:
 async def _errors_until_given_up(runner: Runner) -> list[SourceError]:
     session = follow.FollowSession(runner, build_inventory(make_config()), [SOURCE])  # type: ignore[arg-type]
     errors: list[SourceError] = []
-    async with asyncio.timeout(10):
-        async for event in session.run():
+    # Closed here, inside the time limit: left to the event loop's shutdown, the session's
+    # clean-up ran after the test and could hold up the whole suite.
+    async with asyncio.timeout(10), contextlib.aclosing(session.run()) as events:
+        async for event in events:
             if isinstance(event, SourceError):
                 errors.append(event)
                 if "stopped following it" in event.message:
@@ -103,8 +105,8 @@ async def test_a_stream_that_works_is_followed_again_after_it_ends(quick, monkey
     runner = Runner(script="cat >/dev/null; echo '2026-10-17T10:00:00.000000000Z hello'")
     session = follow.FollowSession(runner, build_inventory(make_config()), [SOURCE])  # type: ignore[arg-type]
     seen = 0
-    async with asyncio.timeout(10):
-        async for event in session.run():
+    async with asyncio.timeout(10), contextlib.aclosing(session.run()) as events:
+        async for event in events:
             assert not isinstance(event, SourceError), event
             seen += 1
             if seen == 5:

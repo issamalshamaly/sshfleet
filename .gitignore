@@ -23,3 +23,6 @@ web/node_modules/.tmp/
 
 # private launch notes: kept on this machine, never committed
 docs/launch-plan.md
+
+# Hypothesis keeps the examples it found here
+.hypothesis/

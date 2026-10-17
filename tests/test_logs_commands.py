@@ -416,3 +416,13 @@ def test_a_rotated_glob_never_reads_a_secret_as_a_log(inventory, window, tmp_pat
     found = subprocess.run(["bash", "-s"], input=search, text=True, capture_output=True, timeout=20)
     assert found.returncode == 0, found.stderr
     assert sorted(Path(line).name for line in found.stdout.split()) == ["app.log", "app.log.1"]
+
+
+@pytest.mark.parametrize("value", ["a", "e", "m", "o", "rm", "t", "ma"])
+def test_a_short_value_is_not_mistaken_for_the_scripts_own_words(inventory, window, value):
+    """Found by Hypothesis: the check cut a one-letter container name out of the script's own
+    words too, ``--format`` became ``--form … t``, and it refused a harmless search as ``rm ``."""
+    source = stdout_source(container=value)
+    commands.build(inventory.host("tst-order"), source, request(sources=(source,), pattern=""), window)
+    commands.build(inventory.host("tst-order"), stdout_source(), request(pattern=value), window)
+    commands.follow_pipeline(inventory.host("tst-order"), source, value)

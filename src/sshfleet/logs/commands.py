@@ -17,6 +17,7 @@ Every pipeline reports each stage's exit code, so "grep found nothing" can be to
 
 from __future__ import annotations
 
+import re
 import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -83,7 +84,11 @@ def strip_quoted(script: str, data: Sequence[str] = ()) -> str:
     for value in data:
         if not value:
             continue
-        out = out.replace(shlex.quote(value), " «data» ")
+        # Only where it stands as a word of its own, which is how every builder places a value.
+        # A value as short as ``a`` also occurs inside the script's own words: cut out of
+        # ``--format`` it left ``--form «data» t``, which reads as ``rm `` and refused a search
+        # that was harmless.
+        out = re.sub(rf"(?<!\w){re.escape(shlex.quote(value))}(?!\w)", " «data» ", out)
     return out
 
 
