@@ -64,7 +64,8 @@ def probe_specs(host: Host, previous: HostSnapshot | None, config: Config) -> li
 
 
 def should_probe(host: Host, previous: HostSnapshot | None) -> bool:
-    """The wallet's /health logs a noisy block per call, so it is rate-limited."""
+    """Some services write a noisy block to their log on every /health call, so a host can ask
+    to be probed less often (``health.min_interval_s``)."""
     if host.probe_min_interval_s <= 0 or previous is None:
         return True
     return (time.time() - previous.at) >= host.probe_min_interval_s

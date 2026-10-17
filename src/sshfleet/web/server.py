@@ -142,7 +142,7 @@ def _start_background_server(port: int, context: Context | None):
 APP_MODE_BROWSERS = ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "brave", "brave-browser", "microsoft-edge", "microsoft-edge-stable")
 
 
-def open_desktop_window(url: str, *, which=shutil.which, run=subprocess.run) -> str:
+def open_desktop_window(url: str, *, which=shutil.which, run=subprocess.run, open_default=webbrowser.open) -> str:
     """Show ``url`` in the best window available; returns what was used.
 
     pywebview first, when it is installed *and* has a working GUI backend (on Linux that is GTK
@@ -168,6 +168,9 @@ def open_desktop_window(url: str, *, which=shutil.which, run=subprocess.run) -> 
     if plain is not None:
         run([plain, url], check=False)
         return f"browser:{plain}"
+    # macOS has none of the above on PATH; the standard library knows `open`.
+    if open_default(url):
+        return "browser:default"
     raise SystemExit(
         "desktop mode needs a browser or pywebview with GTK/Qt bindings (`uv sync --extra desktop` plus "
         f"`pip install pywebview[qt]`); alternatively run `sshfleet web` and open {url}"

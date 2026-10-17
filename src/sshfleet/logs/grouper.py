@@ -2,10 +2,10 @@
 
 pino-pretty prints a header line and then indents the whole object underneath it::
 
-    [2026-08-11 10:59:08.669 +0000] WARN: WALLET CLIENT - Cancel Cashback Grant Failed
-        orderId: "6a5cac7f0f920c933310bdb5"
+    [2026-08-11 10:59:08.669 +0000] WARN: upstream call failed
+        requestId: "4f1c2a9e0b7d"
         error: {
-          "type": "TRANSACTION_NOT_FOUND"
+          "type": "TIMEOUT"
         }
 
 grep matches the *indented* line as often as the header, which is exactly why searching these

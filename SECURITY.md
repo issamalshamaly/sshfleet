@@ -19,7 +19,7 @@
 ## Reporting a vulnerability
 
 Please do not open a public issue for a security problem. Use GitHub's private vulnerability
-reporting on the repository, or email the maintainer named in `pyproject.toml`. You will get an
+reporting on the repository (Security → Report a vulnerability). You will get an
 acknowledgement within a few days.
 
 ## Things worth knowing when you deploy it

@@ -13,7 +13,7 @@ import re
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 #: The same, with ``*`` as a wildcard: a log source may name a container it can only guess,
-#: such as ``*kong*`` for a hand-deployed gateway whose name changes with every deploy.
+#: such as ``*gateway*`` for a hand-deployed container whose name changes with every deploy.
 GLOB_RE = re.compile(r"^[A-Za-z0-9*][A-Za-z0-9_.*-]{0,127}$")
 
 

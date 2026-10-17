@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
-import subprocess
 from typing import Annotated
 
 import typer
@@ -47,8 +45,10 @@ def up(
     else:
         fail(f"{name}: {state.error}")
 
-    if state.up and open_browser and state.open_url and shutil.which("xdg-open"):
-        subprocess.Popen(["xdg-open", state.open_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if state.up and open_browser and state.open_url:
+        import webbrowser  # xdg-open, `open` on macOS, whatever the platform has
+
+        webbrowser.open(state.open_url)
     raise typer.Exit(Exit.OK if state.up else Exit.FAILED)
 
 

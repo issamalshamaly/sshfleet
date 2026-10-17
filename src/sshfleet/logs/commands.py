@@ -207,7 +207,7 @@ def container_stdout_pipeline(
     container = source.container or ""
     sudo = _sudo(host)
     stages: list[str] = []
-    glob = "*" in container  # kong and other hand-deployed containers have unguessable names
+    glob = "*" in container  # a hand-deployed gateway's name can change with every deploy
     quoted = '"$C"' if glob else shlex.quote(container)
 
     producer_flags = ["-t", "--tail", str(request.tail_lines)]
@@ -232,7 +232,7 @@ def container_stdout_pipeline(
             stages.append("cut" if "cut" in stage else "head")
 
     if glob:
-        # Resolve the newest running container whose name matches, e.g. "*kong*".
+        # Resolve the newest running container whose name matches, e.g. "*gateway*".
         pattern = container.replace("*", "")
         resolve = (
             f'C=$({sudo}"$RT" ps --format \'{{{{.Names}}}}\' 2>/dev/null '

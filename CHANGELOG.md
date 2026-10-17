@@ -1,6 +1,40 @@
 # Changelog
 
-## Unreleased
+sshfleet follows [Semantic Versioning](https://semver.org). Before 1.0 a minor release may change
+the configuration file's format; when it does, the file is upgraded on first start and the old
+one is kept beside it.
+
+## 0.1.0 — unreleased
+
+The first public release. Nothing was published before it, so everything below is new in it;
+the sections after the summary say how each part works.
+
+### In short
+
+* Fleet view over SSH with one round-trip per host per refresh, shared `ControlMaster`
+  connections and per-bastion ordering.
+* Containers: state, ports, restart counts; restart in place with verification; removal of a
+  container that is already stopped, with its log saved first. A container that disappears
+  from `ps -a` is reported as gone, once it has been seen running twice, for as long as that is
+  news rather than history.
+* Logs: server-side search across many services in one time window, merged timeline, live follow,
+  bundles; per-service line and byte caps.
+* Files: browse, preview, download, upload; secret files refused.
+* Sites: the domains each host serves, discovered from nginx, Apache, Caddy, Traefik or HAProxy,
+  opened from the fleet row.
+* Terminal in the browser, minimisable: the shell keeps running while you work elsewhere and
+  comes back where you left it. Tunnels riding the shared connections; audit trail.
+* Projects: the outermost thing sshfleet knows about. A project is created first and every
+  environment belongs to exactly one. Grouping only — nothing about how a host is reached or what
+  is watched on it comes from it.
+* Settings: environments from an existing SSH config file or started empty; hosts added, edited
+  and removed one stanza at a time with backups; per-host health checks; refresh interval and
+  thresholds.
+* Sounds for critical alerts, warnings and finished jobs, chosen per event, with a mute button
+  and optional desktop notifications.
+* No service catalogue: a host is the unit, its workloads are discovered from the runtime, and
+  what you want watched is written on the host — a role, a star for the default log search, a
+  short label, an optional workload filter, a health endpoint and any extra log files.
 
 ### Command line
 
@@ -254,32 +288,3 @@ none of them announced itself.
   routinely emptied the view while the header still read "1 match".
 * `logs.default_before` reaches the browser; a custom range with no start time says so instead of
   failing the search; source chips stop spinning when a follow or a stopped search ends.
-
-## 0.1.0
-
-First public release.
-
-* Fleet view over SSH with one round-trip per host per refresh, shared `ControlMaster`
-  connections and per-bastion ordering.
-* Containers: state, ports, restart counts; restart in place with verification; removal of a
-  container that is already stopped, with its log saved first. A container that disappears
-  from `ps -a` is reported as gone, once it has been seen running twice, for as long as that is
-  news rather than history.
-* Logs: server-side search across many services in one time window, merged timeline, live follow,
-  bundles; per-service line and byte caps.
-* Files: browse, preview, download, upload; secret files refused.
-* Sites: the domains each host serves, discovered from nginx, Apache, Caddy, Traefik or HAProxy,
-  opened from the fleet row.
-* Terminal in the browser, minimisable: the shell keeps running while you work elsewhere and
-  comes back where you left it. Tunnels riding the shared connections; audit trail.
-* Projects: the outermost thing sshfleet knows about. A project is created first and every
-  environment belongs to exactly one. Grouping only — nothing about how a host is reached or what
-  is watched on it comes from it.
-* Settings: environments from an existing SSH config file or started empty; hosts added, edited
-  and removed one stanza at a time with backups; per-host health checks; refresh interval and
-  thresholds.
-* Sounds for critical alerts, warnings and finished jobs, chosen per event, with a mute button
-  and optional desktop notifications.
-* No service catalogue: a host is the unit, its workloads are discovered from the runtime, and
-  what you want watched is written on the host — a role, a star for the default log search, a
-  short label, an optional workload filter, a health endpoint and any extra log files.

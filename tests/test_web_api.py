@@ -409,8 +409,17 @@ def test_desktop_falls_back_to_a_browser_window_when_pywebview_cannot_draw(monke
     used = server.open_desktop_window("http://127.0.0.1:1/", which=which, run=lambda argv, check: calls.append(argv))
     assert used == "browser:/usr/bin/firefox" and calls == [["/usr/bin/firefox", "http://127.0.0.1:1/"]]
 
+    # None of those on PATH (macOS): the platform's default browser, through the standard library.
+    opened: list[str] = []
+    used = server.open_desktop_window(
+        "http://127.0.0.1:1/", which=lambda name: None, run=lambda argv, check: None, open_default=lambda u: opened.append(u) or True
+    )
+    assert used == "browser:default" and opened == ["http://127.0.0.1:1/"]
+
     with pytest.raises(SystemExit, match="sshfleet web"):
-        server.open_desktop_window("http://127.0.0.1:1/", which=lambda name: None, run=lambda argv, check: None)
+        server.open_desktop_window(
+            "http://127.0.0.1:1/", which=lambda name: None, run=lambda argv, check: None, open_default=lambda u: False
+        )
 
 
 async def test_everything_the_picker_lists_can_actually_be_searched(web):

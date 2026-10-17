@@ -4,8 +4,10 @@ One tool for a fleet of servers you reach over SSH: see every host at a glance, 
 host, restart a container safely, move files, open a shell, and search several services' logs in
 the same time window.
 
-It drives the `ssh` you already have. Your SSH config files are the inventory, and the tool never
-opens a private key — authentication stays entirely with OpenSSH. What runs on a host is
+It drives the `ssh` you already have. Your SSH config files are the inventory: sshfleet writes a
+config of its own that includes them (and your `~/.ssh/config` too, if you set
+`ssh.include_user_config`). The tool never opens a private key — authentication stays entirely
+with OpenSSH. What runs on a host is
 discovered from its container runtime rather than described in a file, so there is no catalogue
 to keep in step with reality.
 
@@ -20,6 +22,9 @@ sshfleet logs search --env production --main --since 30m --pattern 'error|timeou
 
 Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/). The web interface ships prebuilt, so no
 Node is required to run it.
+
+It runs on Linux, where it is tested, and should run on macOS, which is not yet tested. The
+servers it watches are Linux hosts running docker, podman, or no container runtime at all.
 
 ```bash
 uv tool install sshfleet        # from PyPI, as a command on your PATH
@@ -210,7 +215,7 @@ fleet view simply stops updating. If you started it detached and have no termina
 stop it by name or by port:
 
 ```bash
-pkill -f "sshfleet web"      # or: fuser -k 8765/tcp
+pkill -f "sshfleet web"      # or, on Linux: fuser -k 8765/tcp
 ```
 
 Two things deliberately outlive the app. The SSH master connections stay open for ten minutes
@@ -282,7 +287,7 @@ everything else in the file survive byte for byte, and the files stay plain Open
 `ssh <alias>` uses without the tool. Before each write a copy of the whole file is saved under
 `~/.local/state/sshfleet/ssh-backups/` — never beside the original, because
 `Include ~/.ssh/config.d/*` would read a stray `.bak` as real configuration. Removing a host
-asks you to type its alias. Display name, service, tags and the health check are kept in
+asks you to type its alias. Display name, label, tags and the health check are kept in
 sshfleet's own config instead, so the SSH file stays clean.
 
 The same form sets the health check for that one host: which port and path to call, and how often
@@ -358,7 +363,8 @@ like a spreadsheet formula is written with a leading quote, so it shows as text.
 ## What it does
 
 **Fleet view.** Every host with load, memory, disk, containers running versus expected, a health
-probe and any alerts. A refresh of 48 hosts takes about a second once connections are warm.
+probe and any alerts. A refresh of 48 hosts takes about a second once connections are warm; the
+first one after a start also opens those connections, so it takes a few seconds more.
 
 ```
 env    host                 reach     load   mem%   disk%   ctrs     health   up        age   alerts
@@ -373,8 +379,9 @@ ago is a warning; an init or migration job that finished before the tool first s
 merely noted.
 
 **Containers.** Per host: image, state, ports, restart count. Restart happens in place and is
-not reported as done until the container has been seen running and answering its health endpoint
-twice in a row. A stopped container can be started again or removed, with its log saved first.
+not reported as done until the container is running again and, when the host has a health
+endpoint, has answered it on two checks in a row. Without one, the evidence is that it stayed up
+for five seconds, and the result says exactly that ("verified: running for 5s"). A stopped container can be started again or removed, with its log saved first.
 
 **Logs.** Search one container, one host, or every main service at once. Filtering happens on the
 server, so only matches and their context cross the network. Results from several services are
@@ -512,13 +519,13 @@ default). Everything lives under `~/.config/sshfleet`, `~/.cache/sshfleet` and
 * **A new log format** is a parser in `src/sshfleet/logs/parsers.py` plus a `LogFormat` value; a
   host names it under `log_format`.
 * **Other search backends** (Seq, Elasticsearch) have their `SourceKind` reserved and are the
-  obvious next modules — see the issue tracker.
+  obvious next modules.
 
 ## Development
 
 ```bash
 uv sync
-uv run pytest          # ~390 tests, no servers required
+uv run pytest          # the whole suite, no servers required
 uv run ruff check src tests
 ```
 

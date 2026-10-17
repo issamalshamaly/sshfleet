@@ -7,7 +7,7 @@ to change it safely.
 
 ```bash
 uv sync                      # Python 3.12+, installs the package editable plus dev tools
-uv run pytest                # ~390 tests, no servers needed
+uv run pytest                # the whole suite, no servers needed
 uv run ruff check src tests  # lint; `--fix` for imports
 cd web && pnpm install && pnpm typecheck && pnpm build   # only if you touch the interface
 ```
