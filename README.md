@@ -12,6 +12,7 @@ discovered from its container runtime rather than described in a file, so there 
 to keep in step with reality.
 
 ```
+sshfleet demo                  # try it on a made-up fleet: no servers, nothing of yours touched
 sshfleet web                   # the web interface, opens in your browser
 sshfleet desktop               # the same interface in its own window
 sshfleet fleet --env staging   # same data as a table, for scripts
@@ -34,7 +35,13 @@ uv sync && uv run sshfleet --help
 
 ## First run
 
-Start the interface and open **Settings**:
+To see it before pointing it at anything of yours, `sshfleet demo` runs the real interface on a
+made-up fleet of twelve hosts: alerts, a container to restart, logs to search, files to browse.
+Nothing leaves your machine and nothing of yours is read; `--scenario bastion_down` shows what a
+dead bastion looks like, and `--story` walks through healthy, degraded and a bastion down on a
+loop.
+
+For your own fleet, start the interface and open **Settings**:
 
 ```bash
 sshfleet web
@@ -422,6 +429,7 @@ the prompt appears immediately.
 
 | Command | What it does |
 |---|---|
+| `sshfleet demo [--scenario] [--story]` | the web interface on a made-up fleet, with no servers |
 | `sshfleet web [--port] [--no-open]` | the web interface |
 | `sshfleet desktop [--port]` | the web interface in its own window |
 | `service install · uninstall · status · start · stop · restart · logs` | the web interface as a background service |

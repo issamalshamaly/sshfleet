@@ -21,6 +21,7 @@ import { Spotlight, spotlight, type SpotlightActionData } from "@mantine/spotlig
 import {
   IconAlertTriangle,
   IconBell,
+  IconFlask,
   IconRefresh,
   IconSearch,
   IconServer,
@@ -367,6 +368,14 @@ function Shell() {
           >
             sshfleet was rebuilt after this server started, so parts of the interface are talking to
             routes it does not have. Stop it and start it again — nothing is saved until you do.
+          </Alert>
+        )}
+        {config.data?.demo && (
+          <Alert color="violet" variant="light" icon={<IconFlask size={16} />} mb="sm" py={6}>
+            <Text size="sm">
+              <b>Demo.</b> A made-up fleet: nothing here reaches a real server. Restarts, searches and
+              files all answer; Ctrl+C where <code>sshfleet demo</code> runs ends it.
+            </Text>
           </Alert>
         )}
         {/* A phone names the environment on the header's button already. */}

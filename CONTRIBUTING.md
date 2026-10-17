@@ -18,8 +18,11 @@ The tests replace `ssh` with a shim (`tests/fakes/bin/ssh`) that replays fixture
 
 ## Trying it without any servers
 
-The same shim drives the real program, so the interface can be explored offline, in a home of
-its own that leaves your configuration alone:
+`uv run sshfleet demo` is the quickest way: the real interface on a made-up fleet
+(`src/sshfleet/demo/`), whose stand-in for `ssh` answers every check, search and restart.
+
+The test suite's own shim drives the real program too, against the fixtures the tests use, in a
+home of its own that leaves your configuration alone:
 
 ```bash
 export SSHFLEET_HOME=$(mktemp -d) SSHFLEET_SSH_DIR=$(mktemp -d)

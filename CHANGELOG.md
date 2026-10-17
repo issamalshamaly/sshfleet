@@ -36,6 +36,15 @@ the sections after the summary say how each part works.
   what you want watched is written on the host — a role, a star for the default log search, a
   short label, an optional workload filter, a health endpoint and any extra log files.
 
+### Demo
+
+* `sshfleet demo` runs the real interface on a made-up fleet: Acme, an online shop, twelve hosts on
+  a production and a staging environment. A stand-in for `ssh` answers every check, log search,
+  follow, restart and file listing the way a host would, so everything behind it is the real
+  code; it never connects anywhere and never reads a file of this machine. `--scenario healthy`,
+  `degraded` or `bastion_down`; `--story` walks through all three on a loop. Copies are refused,
+  after the deny list has had its say, and the terminal says there is no shell behind it.
+
 ### Command line
 
 * `sshfleet` on its own prints help and says where to start (`web`, `fleet`, `doctor`); it used

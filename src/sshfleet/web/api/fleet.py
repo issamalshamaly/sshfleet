@@ -55,6 +55,7 @@ async def get_config(request: Request):
         # The page is read from disk every time, the routes behind it only once. When they no
         # longer match, say so rather than let the mismatch surface as a puzzling error.
         "stale": is_stale(state.started_at),
+        "demo": state.demo,
     }
 
 

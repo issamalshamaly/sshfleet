@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -113,6 +114,8 @@ class WebState:
         self._wake = asyncio.Event()
         #: Set when the server starts shutting down; see begin_shutdown.
         self.closing = False
+        #: Serving `sshfleet demo`: a made-up fleet answered by a fake ssh (see demo/).
+        self.demo = os.environ.get("SSHFLEET_DEMO") == "1"
         self._stream_waits: set[asyncio.Timeout] = set()
         self.last_reload: float = 0.0
         self.last_reload_reason: str = "startup"

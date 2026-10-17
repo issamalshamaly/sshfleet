@@ -10,6 +10,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from ...files import DeniedPath, download, download_dir_for, list_dir, preview, upload
+from ...files.browse import resolve_file
+from ...files.denylist import reason_denied
 from ..security import require_token, require_token_or_query
 from ..state import WebState
 
@@ -31,6 +33,9 @@ def _host(state: WebState, alias: str):
     if reason is not None:
         raise HTTPException(409, f"{alias}: {reason}")
     return host
+
+#: What a copy answers in the demo, where there is no file behind any name.
+NOT_IN_DEMO = "Not in the demo: these servers are made up, so there is no file to copy."
 
 
 @router.get("/ls")
@@ -96,6 +101,17 @@ async def file_download(request: Request, alias: str, path: str):
     state = _state(request)
     context = state.context
     host = _host(state, alias)
+    if state.demo:
+        # The deny list still answers first, both checks of it, so the demo shows what would be
+        # refused: the name asked for, then what it leads to.
+        try:
+            reason = reason_denied(path, context.config.files.deny_extra)
+            if reason:
+                raise DeniedPath(path, reason)
+            await resolve_file(context.runner, host, path, deny_extra=context.config.files.deny_extra)
+        except DeniedPath as exc:
+            raise HTTPException(403, str(exc)) from exc
+        raise HTTPException(409, NOT_IN_DEMO)
     target = download_dir_for(context.download_dir, host) / Path(path).name
     try:
         result = await download(context.runner, host, path, target, deny_extra=context.config.files.deny_extra)
@@ -121,6 +137,8 @@ async def file_upload(
     state = _state(request)
     context = state.context
     host = _host(state, alias)
+    if state.demo:
+        raise HTTPException(409, NOT_IN_DEMO)
     name = Path(file.filename or "upload").name
     remote = directory.rstrip("/") + "/" + name
 

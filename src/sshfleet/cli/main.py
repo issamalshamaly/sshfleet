@@ -31,7 +31,8 @@ app = typer.Typer(
     help=(
         "Fleet monitor and support tool for a fleet of servers reached over SSH.\n\n"
         "Start with `sshfleet web` for the browser interface, or `sshfleet fleet` for the same "
-        "status in the terminal. `sshfleet doctor` checks the setup."
+        "status in the terminal. `sshfleet doctor` checks the setup. `sshfleet demo` shows it all "
+        "on a made-up fleet, with no servers."
     ),
     no_args_is_help=True,
     add_completion=True,
@@ -50,6 +51,7 @@ app.add_typer(logs_cmds.app, name="logs")
 app.add_typer(files_cmds.app, name="files")
 app.add_typer(tunnel_cmds.app, name="tunnel")
 app.command("web")(misc_cmds.web)
+app.command("demo")(misc_cmds.demo)
 app.command("desktop")(misc_cmds.desktop)
 app.add_typer(service_cmds.app, name="service")
 app.command("ssh")(misc_cmds.ssh)

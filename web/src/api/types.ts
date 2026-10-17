@@ -189,6 +189,8 @@ export interface AppConfig {
   started_at: number;
   /** The code on disk is newer than the process answering: the page and the routes disagree. */
   stale: boolean;
+  /** Served by `sshfleet demo`: a made-up fleet, answered by a stand-in for ssh. */
+  demo: boolean;
 }
 
 export interface KeyInfo {

@@ -132,6 +132,25 @@ def web(
     run_web(port=port, open_browser=not no_open)
 
 
+def demo(
+    scenario: Annotated[
+        str, typer.Option("--scenario", "-s", help="healthy, degraded (some alerts) or bastion_down.")
+    ] = "degraded",
+    story: Annotated[
+        bool, typer.Option("--story", help="Walk through healthy, degraded and a bastion down, on a loop.")
+    ] = False,
+    port: Annotated[int, typer.Option("--port", "-p", help="Local port to listen on.")] = 8766,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not open the browser automatically.")] = False,
+) -> None:
+    """Try the web interface on a made-up fleet: no servers, no SSH, nothing of yours is touched."""
+    from ..demo.fleet import SCENARIOS
+    from ..demo.run import run_demo
+
+    if scenario not in SCENARIOS:
+        raise typer.BadParameter(f"choose one of {', '.join(SCENARIOS)}", param_hint="--scenario")
+    run_demo(scenario=scenario, story=story, port=port, open_browser=not no_open)
+
+
 def desktop(
     port: Annotated[int, typer.Option("--port", "-p", help="Local port for the embedded server.")] = 8765,
 ) -> None:
