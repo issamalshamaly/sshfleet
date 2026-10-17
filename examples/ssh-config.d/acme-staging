@@ -1,0 +1,32 @@
+# An environment is one SSH config file. sshfleet reads it as it is: every Host is a host, a
+# ProxyJump names the bastion it sits behind, and nothing here is specific to sshfleet.
+#
+# Register it with:
+#   sshfleet project add acme
+#   sshfleet env add --name staging --ssh-config ~/.ssh/config.d/acme-staging \
+#       --key ~/.ssh/acme-staging.pem --project acme
+
+Host acme-stg-bastion
+    HostName 203.0.113.10
+    User ubuntu
+    IdentityFile ~/.ssh/acme-staging.pem
+
+Host acme-stg-api
+    HostName 10.99.0.11
+    User ubuntu
+    ProxyJump acme-stg-bastion
+
+Host acme-stg-worker
+    HostName 10.99.0.12
+    User ubuntu
+    ProxyJump acme-stg-bastion
+
+Host acme-stg-gateway
+    HostName 10.99.0.20
+    User ubuntu
+    ProxyJump acme-stg-bastion
+
+Host acme-stg-db
+    HostName 10.99.0.30
+    User ubuntu
+    ProxyJump acme-stg-bastion

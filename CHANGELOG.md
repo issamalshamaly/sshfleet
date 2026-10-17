@@ -50,6 +50,11 @@ the sections after the summary say how each part works.
 * `env add --test` exits with 4 when a bastion could not be reached, and `doctor` says to set
   `ssh.control_dir` to a short directory when the socket path is too long, rather than
   suggesting a `chmod` that cannot help.
+* A host that cannot be reached shows why in words in `sshfleet fleet` ("○ bastion down") instead
+  of five clipped capitals ("○ BASTI"); `env list` shows paths relative to your home.
+* `examples/` holds an environment's SSH file and the config sshfleet keeps for it (both checked
+  by the tests), CONTRIBUTING explains how to run everything without servers, and the package
+  ships `py.typed`.
 
 ### Phones and tablets
 

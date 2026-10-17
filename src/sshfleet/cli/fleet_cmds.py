@@ -31,8 +31,9 @@ def _fmt_uptime(seconds: int) -> str:
 def _reach_cell(snapshot: HostSnapshot) -> Text:
     if snapshot.reachable:
         return Text("●", style="green")
-    code = (snapshot.error_kind or "err").upper()[:5]
-    return Text(f"○ {code}", style="red")
+    # In words, whole: clipped to five capitals it read "○ BASTI" and "○ TIMEO".
+    reason = (snapshot.error_kind or "error").replace("_", " ")
+    return Text(f"○ {reason}", style="red")
 
 
 def _containers_cell(snapshot: HostSnapshot) -> Text:

@@ -16,6 +16,21 @@ The tests replace `ssh` with a shim (`tests/fakes/bin/ssh`) that replays fixture
 `tests/fixtures/`, and run the collector script under `bash` against fake `docker`, `podman`,
 `sudo` and `curl` (`tests/fakes/remote/`). They expect **GNU** grep, sed and awk on `PATH`.
 
+## Trying it without any servers
+
+The same shim drives the real program, so the interface can be explored offline, in a home of
+its own that leaves your configuration alone:
+
+```bash
+export SSHFLEET_HOME=$(mktemp -d) SSHFLEET_SSH_DIR=$(mktemp -d)
+export SSHFLEET_SSH_BIN=$PWD/tests/fakes/bin/ssh SSHFLEET_FAKE_FIXTURES=$PWD/tests/fixtures
+export SSHFLEET_FAKE_SCENARIO=degraded      # or healthy, bastion_down
+export SSHFLEET_FAKE_LOG=$SSHFLEET_HOME/ssh.log SSHFLEET_FAKE_STATE=$SSHFLEET_HOME/ssh-state.json
+uv run sshfleet project add lab
+uv run sshfleet env add -n testing -c tests/sshconfigs/sample-env --project lab --no-test
+uv run sshfleet web --port 8799            # or: uv run sshfleet fleet
+```
+
 ## Ground rules that tests enforce
 
 * **No key is ever opened.** Identity files are `stat`-ed only.

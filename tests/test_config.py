@@ -410,3 +410,21 @@ def test_a_health_port_that_is_not_a_port_is_refused(port):
 def test_a_health_port_written_as_text_is_read_as_a_number():
     config = config_loader.parse_mapping({"hosts": {"tst-order": {"health": {"port": "3001", "path": "/"}}}})
     assert config.hosts["tst-order"].health == {"port": 3001, "path": "/"}
+
+
+def test_the_example_config_is_a_valid_config():
+    """examples/config.yaml is documentation people copy from; it must stay loadable."""
+    root = Path(__file__).parents[1]
+    config = config_loader.parse_text((root / "examples" / "config.yaml").read_text(), source="examples/config.yaml")
+    assert [e.name for e in config.environments] == ["staging"]
+    assert config.hosts["acme-stg-api"].health == {"port": 3000, "path": "/health"}
+
+
+def test_the_example_ssh_file_reads_as_one_bastion_and_four_hosts():
+    from sshfleet.inventory import build_inventory
+
+    root = Path(__file__).parents[1]
+    config = Config(environments=[EnvironmentCfg(name="staging", ssh_config_path=root / "examples" / "ssh-config.d" / "acme-staging")])
+    inventory = build_inventory(config)
+    assert inventory.environment("staging").bastions == ["acme-stg-bastion"]
+    assert len(inventory.hosts("staging")) == 5

@@ -367,10 +367,10 @@ probe and any alerts. A refresh of 48 hosts takes about a second once connection
 first one after a start also opens those connections, so it takes a few seconds more.
 
 ```
-env    host                 reach     load   mem%   disk%   ctrs     health   up        age   alerts
-prod   prod-api             ●         0.21   61     71      1/1      200      7d3h      6s
-prod   prod-metrics         ●         0.00   87     42      1        —        116d1h    6s    MEM, RESTARTS
-prod   prod-portal          ○ TIMEO   —      —      —       —        —        —         6s    UNREACH
+env    host           reach                load   mem%   disk%   ctrs   health   up       age   alerts
+prod   prod-api       ●                    0.21   61     71      1/1    200      7d3h     6s
+prod   prod-metrics   ●                    0.00   87     42      1      —        116d1h   6s    MEM, RESTARTS
+prod   prod-portal    ○ timeout connect    —      —      —       —      —        —        6s    UNREACH
 ```
 
 Containers are discovered with `ps -a`, so stopped ones are listed too, drawn faded with their

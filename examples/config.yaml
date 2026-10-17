@@ -1,0 +1,45 @@
+# ~/.config/sshfleet/config.yaml — what the Settings page writes for the SSH file next to this
+# one. You never have to write it by hand; it is here to show what sshfleet keeps about a fleet.
+#
+# The hosts themselves come from the SSH file. Everything under `hosts:` is optional: it says
+# what you want watched, and a host with no entry is still shown, whole.
+version: 3
+
+projects:
+  - {name: acme, color: violet, description: Customer platform}
+
+environments:
+  - name: staging
+    project: acme
+    short: stg
+    color: yellow
+    ssh_config_path: ~/.ssh/config.d/acme-staging
+    key_path: ~/.ssh/acme-staging.pem     # recorded and permission-checked, never read
+
+hosts:
+  acme-stg-api:
+    role: service
+    main: true                  # its running workloads are in the default log search
+    label: api                  # the tag in merged log output
+    workloads: "api-*"          # only these; leave it out to watch everything on the host
+    health: {port: 3000, path: /health}
+    log_format: pino_pretty
+    expected_count: 2           # alert when fewer than two api-* containers exist
+
+  acme-stg-worker:
+    role: service
+    label: worker
+    ignored_containers: ["job-*"]   # a container per job: listed, never alerted on
+
+  acme-stg-gateway:
+    role: gateway
+    main: true
+    label: gw
+    health: {port: 8001, path: /status, min_interval_s: 300}   # its /health is chatty
+
+  acme-stg-db:
+    role: data
+    label: db
+
+refresh:
+  fast_s: 60                    # one sweep a minute; a sweep is one round-trip per host

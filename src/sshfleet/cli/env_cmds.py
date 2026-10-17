@@ -176,9 +176,16 @@ def list_envs(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
         table(
             "Environments",
             ["name", "short", "project", "hosts", "bastions", "ssh config"],
-            [[d["name"], d["short"], d["project"], d["hosts"], ", ".join(d["bastions"]), d["ssh_config"]] for d in data],
+            [[d["name"], d["short"], d["project"], d["hosts"], ", ".join(d["bastions"]), _home_relative(d["ssh_config"])] for d in data],
         )
     )
+
+
+def _home_relative(path: str) -> str:
+    """``~/.ssh/config.d/prod`` rather than the full home path, which pushed the other columns
+    into a sliver of the table."""
+    home = str(Path.home())
+    return "~" + path[len(home) :] if path == home or path.startswith(home + "/") else path
 
 
 @app.command("test")
