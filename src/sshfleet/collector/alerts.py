@@ -169,10 +169,17 @@ def evaluate(
     return alerts
 
 
-def transitions(previous: list[Alert], current: list[Alert]) -> tuple[list[Alert], list[Alert]]:
-    """Alerts that appeared and alerts that cleared — the only ones worth a toast."""
+def transitions(
+    previous: list[Alert], current: list[Alert], *, reachable: bool = True
+) -> tuple[list[Alert], list[Alert]]:
+    """Alerts that appeared and alerts that cleared — the only ones worth a toast.
+
+    A host that could not be reached says nothing about its disk, memory or containers, so what
+    was wrong with it before is unknown, not cleared: a full disk behind a bastion that went down
+    was announced as cleared the moment the bastion did.
+    """
     before = {a.key: a for a in previous}
     after = {a.key: a for a in current}
     appeared = [a for key, a in after.items() if key not in before]
-    cleared = [a for key, a in before.items() if key not in after]
+    cleared = [a for key, a in before.items() if key not in after] if reachable else []
     return appeared, cleared

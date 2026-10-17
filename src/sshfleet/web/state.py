@@ -542,8 +542,14 @@ class WebState:
         snapshot = self.fleet.snapshot(alias)
         if snapshot is None:
             return
-        appeared, cleared = transitions(self._previous_alerts.get(alias, []), snapshot.alerts)
-        self._previous_alerts[alias] = list(snapshot.alerts)
+        previous = self._previous_alerts.get(alias, [])
+        appeared, cleared = transitions(previous, snapshot.alerts, reachable=snapshot.reachable)
+        current = list(snapshot.alerts)
+        if not snapshot.reachable:
+            # Still remembered, so the same alert found again later is not announced afresh.
+            seen = {a.key for a in current}
+            current += [a for a in previous if a.key not in seen]
+        self._previous_alerts[alias] = current
         for alert in appeared:
             self.events.publish({"type": "alert", "state": "appeared", "alert": alert_payload(alert)})
         for alert in cleared:

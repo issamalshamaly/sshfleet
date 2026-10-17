@@ -531,3 +531,37 @@ def test_a_failed_sudo_is_not_every_workload_gone(inventory):
     # And one that is still there is simply there.
     fine = parse_collect(json.dumps(with_worker), host, previous=blind)
     assert fine.vanished_containers == [] and "worker" in fine.established
+
+
+async def test_an_alert_behind_a_bastion_that_went_down_is_not_cleared(web, inventory):
+    """The bastion going down announced every alert behind it as cleared: a disk at 93% read as
+    fixed. Unreachable says nothing about the disk, so its alert is neither cleared nor, when
+    the host is back and still full, announced as new."""
+    from sshfleet.collector import unreachable
+    from sshfleet.collector.model import Alert, HostSnapshot
+
+    _, state = web
+    events = state.events.subscribe()
+    host = state.context.inventory.host("tst-order")
+
+    def check(snapshot: HostSnapshot) -> list[tuple[str, str]]:
+        state.fleet.state.snapshots[host.alias] = snapshot
+        state._announce(host.alias)
+        seen = []
+        while not events.empty():
+            event = events.get_nowait()
+            if event.get("type") == "alert" and event["alert"]["host"] == host.alias:
+                seen.append((event["state"], event["alert"]["code"]))
+        return seen
+
+    full = HostSnapshot(alias=host.alias, env=host.env, reachable=True)
+    full.alerts = [Alert("DISK", Severity.CRIT, "/ 93% full", host.alias)]
+    assert check(full) == [("appeared", "DISK")]
+
+    down = unreachable(host, "bastion_down", "via tst-bastion: timed out")
+    down.alerts = [Alert("BASTION_DOWN", Severity.CRIT, "via tst-bastion", host.alias)]
+    assert check(down) == [("appeared", "BASTION_DOWN")], "the disk is unknown now, not fixed"
+
+    assert check(full) == [("cleared", "BASTION_DOWN")], "still full: nothing new to say about the disk"
+    fixed = HostSnapshot(alias=host.alias, env=host.env, reachable=True)
+    assert check(fixed) == [("cleared", "DISK")]
