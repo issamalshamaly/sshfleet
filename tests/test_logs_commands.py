@@ -384,3 +384,15 @@ def test_the_docker_prefix_is_still_compared_exactly(inventory, window):
     """``docker logs -t`` is always UTC with Z, so that one stage keeps its early exit."""
     script = commands.build(inventory.host("tst-order"), stdout_source(), request(), window).script
     assert "-v U=2026-09-13T12:00:00" in script, script
+
+
+def test_the_cli_refuses_a_container_name_that_is_a_command(configured, fake_ssh):
+    """A message and the usage exit code, not a traceback, and nothing sent anywhere."""
+    from typer.testing import CliRunner
+
+    from sshfleet.cli.main import app
+
+    result = CliRunner().invoke(app, ["logs", "search", "-e", "testing", "-p", "x", "-c", "tst-order:x$(id)"])
+    assert result.exit_code == 2
+    assert "is not a container name" in result.output
+    assert [c for c in fake_ssh.calls() if "x$(id)" in str(c)] == []

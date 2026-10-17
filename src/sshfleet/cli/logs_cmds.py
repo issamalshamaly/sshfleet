@@ -95,7 +95,11 @@ def _resolve_sources(
         if not name:
             fail(f"--container expects host:name, got {spec!r}")
             raise typer.Exit(Exit.USAGE)
-        sources.append(container_source_for(context.inventory.host(alias), name))
+        try:
+            sources.append(container_source_for(context.inventory.host(alias), name))
+        except ValueError as exc:
+            fail(str(exc))
+            raise typer.Exit(Exit.USAGE) from exc
 
     for spec in files or []:
         alias, _, path = spec.partition(":")

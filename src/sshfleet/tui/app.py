@@ -211,7 +211,11 @@ class SshFleetApp(App):
         if sources is not None:
             chosen = list(sources)
         elif container and host_alias:
-            chosen = [container_source_for(self.context.inventory.host(host_alias), container)]
+            try:
+                chosen = [container_source_for(self.context.inventory.host(host_alias), container)]
+            except ValueError as exc:
+                self.notify(str(exc), severity="error")
+                return
         elif host_alias:
             host = self.context.inventory.host(host_alias)
             chosen = host_sources(host, self.fleet.snapshot(host_alias))
