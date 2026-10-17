@@ -95,10 +95,30 @@ def test_wallet_uses_podman_without_sudo(inventory):
 
 
 def test_container_names_are_quoted(inventory):
-    command = restart_command(inventory.host("tst-order"), "weird name; rm -rf /")
-    rendered = command.render()
-    assert "'weird name; rm -rf /'" in rendered
-    assert rendered.count("rm -rf") == 1  # inside the quoted argument only
+    rendered = restart_command(inventory.host("tst-order"), "order-production").render()
+    assert rendered.endswith(" order-production")  # one argument; render() quotes every part
+
+
+@pytest.mark.parametrize("name", ["weird name; rm -rf /", "x$(id)", "x`id`", "*kong*", "-f", "a\nb", ""])
+def test_a_name_no_runtime_would_produce_never_reaches_a_command(inventory, name):
+    """Quoted on the way out as well, but a name like this has no business in a command at all."""
+    from sshfleet.containers import inspect_command, logs_command, ps_command, remove_command
+
+    host = inventory.host("tst-order")
+    builders = [restart_command, inspect_command, logs_command, remove_command]
+    if name:
+        builders.append(ps_command)  # ps without a name lists them all, which is its other use
+    for build in builders:
+        with pytest.raises(ForbiddenCommand, match="not a container name"):
+            build(host, name)
+
+
+def test_the_status_filter_is_one_quoted_argument(inventory):
+    """Regression: ``--filter name=^NAME$`` went into the status script bare."""
+    script = actions.status_script(inventory.host("tst-order"), "order-production", None, None)
+    assert "--filter 'name=^order-production$'" in script
+    with pytest.raises(ValueError, match="not a container name"):
+        actions.status_script(inventory.host("tst-order"), "x$(id)", None, None)
 
 
 def test_preview_shows_the_whole_ssh_command(inventory):

@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from ...config import loader as config_loader
 from ...config.schema import HostOverride
 from ...containers import RestartOutcome, remove, restart_and_verify, tail_logs
+from ...containers.names import check_container_name
 from ...containers.quick import offers
 from ...containers.runtime import ForbiddenCommand, restart_command
 from ...inventory import ignore_glob_for
@@ -170,6 +171,10 @@ async def remove_container(request: Request, alias: str, name: str, confirm: str
         host = context.inventory.host(alias)
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
+    try:
+        check_container_name(name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     if confirm.strip() != name:
         raise HTTPException(400, "type the container name to confirm removing it")
     snapshot = state.fleet.snapshot(alias)

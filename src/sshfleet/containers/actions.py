@@ -18,6 +18,7 @@ from pathlib import Path
 from ..inventory import Host
 from ..ssh import RunResult, SshRunner
 from . import runtime as rt
+from .names import check_container_name
 
 POLL_INTERVAL = 1.0
 DEFAULT_VERIFY_TIMEOUT = 90.0
@@ -100,12 +101,14 @@ def status_script(host: Host, name: str, port: int | None, path: str | None) -> 
     """One round-trip returning ``state<TAB>status<TAB>probe`` for a single container."""
     binary = rt.detect_command(host)
     prefix = "sudo -n " if host.sudo else ""
-    quoted = shlex.quote(name)
+    quoted = shlex.quote(check_container_name(name))
+    # The filter is one argument and is quoted as one: it used to go in bare.
+    name_filter = shlex.quote(f"name=^{name}$")
     return (
         "# sshfleet:status\n"
         "export LC_ALL=C\n"
         f'RT={binary}\n'
-        f'line=$({prefix}"$RT" ps -a --filter name=^{name}$ --format \'{{{{.State}}}}\t{{{{.Status}}}}\' 2>/dev/null | head -1)\n'
+        f'line=$({prefix}"$RT" ps -a --filter {name_filter} --format \'{{{{.State}}}}\t{{{{.Status}}}}\' 2>/dev/null | head -1)\n'
         f'[ -n "$line" ] || line=$({prefix}"$RT" inspect --format \'{{{{.State.Status}}}}\t{{{{.State.Status}}}}\' {quoted} 2>/dev/null)\n'
         f"{_probe_block(port, path)}"
         'printf "%s\\t%s\\n" "${line:-missing\tmissing}" "$probe"\n'

@@ -85,9 +85,13 @@ def restart(
         fail(str(exc))
         raise typer.Exit(Exit.USAGE) from exc
 
-    from ..containers.runtime import restart_command
+    from ..containers.runtime import ForbiddenCommand, restart_command
 
-    command = restart_command(host, name)
+    try:
+        command = restart_command(host, name)
+    except ForbiddenCommand as exc:
+        fail(str(exc))
+        raise typer.Exit(Exit.USAGE) from exc
     environment = context.config.environment(host.env)
     is_production = "prod" in environment.name.lower()
 

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from ..inventory import Host
+from .names import check_container_name
 
 #: Read-only inspection plus the single in-place action the tool offers.
 ALLOWED_VERBS: frozenset[str] = frozenset(
@@ -84,10 +85,22 @@ def detect_command(host: Host) -> str:
     return "$(command -v podman 2>/dev/null || command -v docker 2>/dev/null)"
 
 
+def _container(name: str) -> str:
+    """A name about to go into a command, refused unless a runtime could have produced it.
+
+    Every argument is quoted when the command is rendered; this is the second lock, so that what
+    reaches a host is a container name and nothing that only looks like one once quoted.
+    """
+    try:
+        return check_container_name(name)
+    except ValueError as exc:
+        raise ForbiddenCommand(str(exc)) from None
+
+
 def ps_command(host: Host, name: str | None = None) -> RemoteCommand:
     args = ["-a", "--format", "{{.Names}}\t{{.State}}\t{{.Status}}"]
     if name:
-        args += ["--filter", f"name=^{name}$"]
+        args += ["--filter", f"name=^{_container(name)}$"]
     return RemoteCommand(host, "ps", tuple(args))
 
 
@@ -96,16 +109,16 @@ def inspect_command(host: Host, name: str) -> RemoteCommand:
         "{{.Name}}\t{{.Config.Image}}\t{{.Image}}\t{{.Created}}\t{{.State.StartedAt}}"
         "\t{{.State.Status}}\t{{.State.ExitCode}}\t{{.RestartCount}}\t{{.HostConfig.NetworkMode}}\t{{.LogPath}}"
     )
-    return RemoteCommand(host, "inspect", ("--format", template, name))
+    return RemoteCommand(host, "inspect", ("--format", template, _container(name)))
 
 
 def restart_command(host: Host, name: str, timeout: int = 10) -> RemoteCommand:
     """``docker restart -t <timeout> <name>`` — in place, no stop/rm pair."""
-    return RemoteCommand(host, "restart", ("-t", str(timeout), name))
+    return RemoteCommand(host, "restart", ("-t", str(timeout), _container(name)))
 
 
 def logs_command(host: Host, name: str, tail: int = 80) -> RemoteCommand:
-    return RemoteCommand(host, "logs", ("--tail", str(tail), name))
+    return RemoteCommand(host, "logs", ("--tail", str(tail), _container(name)))
 
 
 def remove_command(host: Host, name: str) -> RemoteCommand:
@@ -114,4 +127,4 @@ def remove_command(host: Host, name: str) -> RemoteCommand:
     Never ``-f``: a container that started running between the check and this command makes
     the runtime refuse, which is exactly what we want.
     """
-    return RemoteCommand(host, "rm", (name,), guarded=True)
+    return RemoteCommand(host, "rm", (_container(name),), guarded=True)

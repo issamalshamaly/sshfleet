@@ -83,6 +83,10 @@
   unquoted into the message for a container that is not there, so `x$(cmd)` ran `cmd`. Names are
   now quoted there too, a name that is not a container name is refused before anything connects,
   the read-only check no longer overlooks a value left unquoted, and follow is checked as well.
+* After a restart, the check that the container is back put its name into a filter unquoted. It
+  is quoted now, and every container command (restart, remove, inspect, logs) refuses a name that
+  docker or podman could not have given, with a 400 from the page and a message on the command
+  line.
 
 ### Environments
 

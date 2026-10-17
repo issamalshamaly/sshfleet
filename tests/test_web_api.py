@@ -93,6 +93,19 @@ async def test_production_restart_requires_typed_confirmation(web, context):
     assert "typed" in response.json()["detail"]
 
 
+async def test_container_routes_refuse_a_name_that_is_a_command(web, fake_ssh):
+    client, _ = web
+    name = "x$(touch sshfleet-pwned)"  # no "/": the name is one path segment of the route
+    responses = [
+        await client.get(f"/api/hosts/tst-order/containers/{name}/preview"),
+        await client.post(f"/api/hosts/tst-order/containers/{name}/restart", json={"confirm": name}),
+        await client.delete(f"/api/hosts/tst-order/containers/{name}", params={"confirm": name}),
+    ]
+    assert [r.status_code for r in responses] == [400, 400, 400]
+    assert all("not a container name" in r.json()["detail"] for r in responses)
+    assert [c for c in fake_ssh.calls() if "pwned" in json.dumps(c)] == []
+
+
 async def test_quick_actions_are_tailored_to_the_container(web):
     """The menu the browser draws is built on the server, from what it knows about the host."""
     client, state = web
