@@ -4,7 +4,7 @@ sshfleet follows [Semantic Versioning](https://semver.org). Before 1.0 a minor r
 the configuration file's format; when it does, the file is upgraded on first start and the old
 one is kept beside it.
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-10-17
 
 The first public release. Nothing was published before it, so everything below is new in it;
 the sections after the summary say how each part works.
