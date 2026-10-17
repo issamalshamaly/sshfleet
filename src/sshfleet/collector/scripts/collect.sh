@@ -100,6 +100,8 @@ for spec in $PROBES; do
     port=${spec%%:*}
     path=${spec#*:}
     [ "$path" = "$port" ] && path="/"
+    # The port is read again as shell inside `bash -c` below: digits only, or no probe at all.
+    case $port in ''|*[!0-9]*) continue ;; esac
     code=""
     if command -v curl >/dev/null 2>&1; then
         # Capture only; a failed curl still prints 000, and `|| echo 000` would append a second one.

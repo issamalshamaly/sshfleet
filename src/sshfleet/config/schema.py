@@ -184,7 +184,7 @@ class HostOverride:
             label=raw.get("label") or None,
             workloads=str(raw["workloads"]) if raw.get("workloads") else None,
             log_format=str(raw.get("log_format") or "auto"),
-            health=dict(raw.get("health") or {}),
+            health=_health(raw.get("health")),
             web_root=raw.get("web_root") or None,
             expected_count=int(raw["expected_count"]) if raw.get("expected_count") is not None else None,
             ignored_containers=[str(n) for n in (raw.get("ignored_containers") or [])],
@@ -192,6 +192,22 @@ class HostOverride:
             log_sources=[dict(s) for s in (raw.get("log_sources") or []) if isinstance(s, dict) and s.get("path")],
             paused=True if raw.get("paused") else None,
         )
+
+
+def _health(raw: Any) -> dict[str, Any]:
+    """The health endpoint, with its port made a number or refused.
+
+    The port goes into a script on the host, inside ``bash -c "…/dev/tcp/127.0.0.1/PORT"`` when
+    there is no curl, where anything but digits would be read as shell. The settings page always
+    checked it; a hand-edited file or an imported bundle did not.
+    """
+    health = dict(raw or {})
+    port = health.get("port")
+    if port:
+        if isinstance(port, bool) or not str(port).isdigit() or not 1 <= int(port) <= 65535:
+            raise ConfigError(f"health.port must be a port number from 1 to 65535, not {port!r}")
+        health["port"] = int(port)
+    return health
 
 
 @dataclass(slots=True)

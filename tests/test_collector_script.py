@@ -155,3 +155,12 @@ def test_static_sites_are_read_from_the_configured_root(tmp_path: Path):
     assert all(f["mtime"] > 0 for f in document["frontends"])
     # No fourth argument still means the conventional nginx root, which is absent here.
     assert isinstance(run_collect(runtime="none")["frontends"], list)
+
+
+def test_a_probe_whose_port_is_not_a_number_is_skipped(tmp_path):
+    """The port is read again as shell inside `bash -c` when curl is missing; a spec whose port is
+    not digits is dropped before either branch, and the report stays valid JSON."""
+    mark = tmp_path / "ran"
+    document = run_collect(f"1;>{mark}:/health 3001:/health/live", runtime="docker")
+    assert [p["port"] for p in document["probes"]] == [3001]
+    assert not mark.exists()

@@ -87,6 +87,9 @@
   is quoted now, and every container command (restart, remove, inspect, logs) refuses a name that
   docker or podman could not have given, with a 400 from the page and a message on the command
   line.
+* A host's health port from a hand-edited config or an imported bundle reached a script on the
+  host unchecked, where a value like `1;cmd` ran `cmd` on a host without curl. It must now be a
+  port number when the config is read, and the script and the restart check accept only digits.
 
 ### Environments
 

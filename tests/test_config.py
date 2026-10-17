@@ -397,3 +397,16 @@ def test_every_way_a_config_can_be_wrong_is_a_config_error(text: str):
     """Restore and import check before they write, and they can only check for what they catch."""
     with pytest.raises(ConfigError):
         config_loader.parse_text(text)
+
+
+@pytest.mark.parametrize("port", ["1;id", "$(id)", "3001 ", -1, 65536, True])
+def test_a_health_port_that_is_not_a_port_is_refused(port):
+    """The port ends up in a script on the host (`bash -c "…/dev/tcp/127.0.0.1/PORT"`), so a
+    hand-edited file or an imported bundle must not be able to put anything else there."""
+    with pytest.raises(ConfigError, match=r"hosts\.tst-order: health\.port"):
+        config_loader.parse_mapping({"hosts": {"tst-order": {"health": {"port": port, "path": "/"}}}})
+
+
+def test_a_health_port_written_as_text_is_read_as_a_number():
+    config = config_loader.parse_mapping({"hosts": {"tst-order": {"health": {"port": "3001", "path": "/"}}}})
+    assert config.hosts["tst-order"].health == {"port": 3001, "path": "/"}

@@ -37,7 +37,10 @@ def probe_specs(host: Host, previous: HostSnapshot | None, config: Config) -> li
     seen: set[int] = set()
 
     def add(port: int | None, path: str | None) -> None:
-        if not port or port in seen or port in NON_HTTP_PORTS:
+        if not port:
+            return
+        port = int(port)  # it is written into the script's arguments
+        if port in seen or port in NON_HTTP_PORTS:
             return
         seen.add(port)
         specs.append(f"{port}:{path or '/'}")

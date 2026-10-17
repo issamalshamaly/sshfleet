@@ -82,6 +82,17 @@ def parse_mapping(raw: dict[str, Any], *, source: str = "config") -> Config:
         raise ConfigError(f"{source}: {type(exc).__name__}: {exc}") from exc
 
 
+def _host_overrides(raw: dict[str, Any]) -> dict[str, HostOverride]:
+    """Every host record, with the host named in the error when one of them is wrong."""
+    out: dict[str, HostOverride] = {}
+    for alias, entry in raw.items():
+        try:
+            out[alias] = HostOverride.from_dict(entry or {})
+        except ConfigError as exc:
+            raise ConfigError(f"hosts.{alias}: {exc}") from exc
+    return out
+
+
 #: What an environment is filed under when a file predates projects and names none.
 DEFAULT_PROJECT = "default"
 
@@ -135,7 +146,7 @@ def load_mapping(raw: dict[str, Any]) -> Config:
         environments=environments,
         probes=_fill(ProbesCfg, raw.get("probes") or {}),
         frontends=_fill(FrontendsCfg, raw.get("frontends") or {}),
-        hosts={k: HostOverride.from_dict(v or {}) for k, v in (raw.get("hosts") or {}).items()},
+        hosts=_host_overrides(raw.get("hosts") or {}),
         refresh=_fill(RefreshCfg, raw.get("refresh") or {}),
         concurrency=_fill(ConcurrencyCfg, raw.get("concurrency") or {}, {"global": "global_"}),
         thresholds=_fill(Thresholds, raw.get("thresholds") or {}),

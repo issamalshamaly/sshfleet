@@ -89,7 +89,8 @@ def _probe_block(port: int | None, path: str | None) -> str:
         # A failed curl still prints 000, so capture only: `|| echo 000` would append a second.
         f"    probe=$(curl -s -m 2 -o /dev/null -w '%{{http_code}}' {shlex.quote(url)} 2>/dev/null)\n"
         '    [ -z "$probe" ] && probe="000"\n'
-        f'elif timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/{port}" 2>/dev/null; then\n'
+        # Read as shell by the inner bash, so only ever a number.
+        f'elif timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/{int(port)}" 2>/dev/null; then\n'
         '    probe="open"\n'
         "else\n"
         '    probe="closed"\n'

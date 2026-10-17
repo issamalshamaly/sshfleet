@@ -113,6 +113,13 @@ def test_a_name_no_runtime_would_produce_never_reaches_a_command(inventory, name
             build(host, name)
 
 
+def test_the_probe_port_is_only_ever_a_number():
+    """It is read as shell by the inner `bash -c` of the no-curl branch."""
+    assert "/dev/tcp/127.0.0.1/3001" in actions._probe_block(3001, "/health")
+    with pytest.raises(ValueError):
+        actions._probe_block("1;id", "/health")
+
+
 def test_the_status_filter_is_one_quoted_argument(inventory):
     """Regression: ``--filter name=^NAME$`` went into the status script bare."""
     script = actions.status_script(inventory.host("tst-order"), "order-production", None, None)
