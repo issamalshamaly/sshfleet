@@ -44,6 +44,10 @@ async def ls(request: Request, alias: str, path: str = "", hidden: bool = False)
         raise HTTPException(400, str(exc)) from exc
     except OSError as exc:
         raise HTTPException(502, str(exc)) from exc
+    # Reads are recorded as well as changes: what was looked at on a host can matter later.
+    state.context.audit.append(
+        "file.list", env=host.env, host=alias, target=listing.path, status="ok", note="with sudo" if listing.used_sudo else None
+    )
     return {
         "host": alias,
         "path": listing.path,
@@ -71,15 +75,19 @@ async def ls(request: Request, alias: str, path: str = "", hidden: bool = False)
 async def file_preview(request: Request, alias: str, path: str, bytes: int = 65536):
     state = _state(request)
     host = _host(state, alias)
+    audit = state.context.audit
     try:
-        return await preview(
+        text = await preview(
             state.context.runner, host, path, max_bytes=min(bytes, 1_000_000),
             deny_extra=state.context.config.files.deny_extra,
         )
     except DeniedPath as exc:
+        audit.append("file.preview", env=host.env, host=alias, target=path, status="denied", note=exc.reason)
         raise HTTPException(403, str(exc)) from exc
     except OSError as exc:
         raise HTTPException(502, str(exc)) from exc
+    audit.append("file.preview", env=host.env, host=alias, target=path, status="ok")
+    return text
 
 
 @downloads.get("/download")

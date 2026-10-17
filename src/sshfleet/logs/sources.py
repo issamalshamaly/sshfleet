@@ -243,3 +243,10 @@ __all__ = [
     "nginx_sources",
     "workload_sources",
 ]
+
+
+def describe_sources(sources: list[LogSource]) -> str:
+    """For the audit trail: how many sources, and on which hosts."""
+    hosts = sorted({s.host_alias for s in sources if s.host_alias})
+    named = ", ".join(hosts[:8]) + (f" and {len(hosts) - 8} more" if len(hosts) > 8 else "")
+    return f"{len(sources)} source(s)" + (f" on {named}" if named else "")

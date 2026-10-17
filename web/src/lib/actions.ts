@@ -3,11 +3,16 @@
 
 const LABELS: Record<string, string> = {
   "container.restart": "Container restarted",
+  "container.quick": "Quick action run",
+  "container.remove": "Container removed",
+  "container.ignore": "Container ignored",
   "file.download": "File downloaded",
   "file.upload": "File uploaded",
   "file.preview": "File previewed",
+  "file.list": "Folder listed",
   "logs.download": "Log bundle saved",
   "logs.search": "Logs searched",
+  "logs.follow": "Logs followed",
   "tunnel.up": "Tunnel opened",
   "tunnel.down": "Tunnel closed",
   "tunnel.dropped": "Tunnel dropped",

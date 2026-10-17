@@ -34,6 +34,7 @@ from ..logs import (
     main_sources,
     workload_sources,
 )
+from ..logs.sources import describe_sources
 from .output import Exit, console, err_console, fail, table
 
 app = typer.Typer(no_args_is_help=True, help="Search and follow logs across services.")
@@ -210,6 +211,10 @@ def search(
         bundle = Bundle(directory=directory, request=request, env=environment.name)
 
     summary: SearchDone | None = None
+    context.audit.append(
+        "logs.search", env=environment.name, target=(pattern or "")[:200] or None, status="started",
+        note="cli; " + describe_sources(sources) + ("; saved as a bundle" if bundle else ""),
+    )
     coordinator = SearchCoordinator(context.runner, context.inventory, context.config)
 
     async def run() -> None:
@@ -368,6 +373,10 @@ def tail_cmd(
 
     zone = tz_module.zone_for(tz or context.config.logs.display_tz)
     styles = _styles(sources)
+    context.audit.append(
+        "logs.follow", env=environment.name, target=(pattern or "")[:200] or None, status="started",
+        note="cli; " + describe_sources(sources),
+    )
 
     async def run() -> None:
         async for event in follow(context.runner, context.inventory, sources, pattern=pattern, since=since):

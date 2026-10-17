@@ -203,6 +203,9 @@ async def remove_container(request: Request, alias: str, name: str, confirm: str
         raise HTTPException(409 if outcome.state not in {"missing"} else 404, outcome.message)
 
     ignored = _ignore(state, alias, name)
+    # Gone on purpose, so not an alert: said in the response and kept in the trail, where it can
+    # be found and undone like an ignore made by hand.
+    context.audit.append("container.ignore", env=host.env, host=alias, target=name, status="ok", note="after removing it")
     await state.reload(reason=f"{name} removed from {alias}")
     state.spawn(state.refresh(alias=alias))
     return {**outcome.to_dict(), "ignored": ignored}

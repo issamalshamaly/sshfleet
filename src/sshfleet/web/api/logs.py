@@ -31,6 +31,7 @@ from ...logs import (
     workload_sources,
 )
 from ...logs.follow import follow
+from ...logs.sources import describe_sources
 from ..security import require_token, require_token_or_query
 from ..state import WebState
 
@@ -206,6 +207,11 @@ async def search(request: Request, body: SearchBody):
         directory = bundle_dir(context.download_dir, environment.name, body.pattern or "all")
         bundle = Bundle(directory=directory, request=search_request, env=environment.name)
 
+    # Recorded whether or not it is saved: a search reads production logs either way.
+    context.audit.append(
+        "logs.search", env=environment.name, target=(body.pattern or "")[:200] or None, status="started",
+        note=describe_sources(chosen) + ("; saved as a bundle" if bundle else ""),
+    )
     coordinator = SearchCoordinator(context.runner, context.inventory, context.config)
 
     async def stream() -> AsyncGenerator[bytes, None]:
@@ -266,6 +272,9 @@ async def follow_logs(request: Request, body: FollowBody):
         raise HTTPException(400, "no log sources matched the selection")
     limit = context.config.logs.follow_max_sources
     chosen = chosen[:limit]
+    context.audit.append(
+        "logs.follow", env=environment.name, target=(body.pattern or "")[:200] or None, status="started", note=describe_sources(chosen)
+    )
 
     async def stream() -> AsyncGenerator[bytes, None]:
         yield (json.dumps({"type": "start", "sources": [source_payload(s) for s in chosen]}) + "\n").encode()

@@ -83,3 +83,33 @@ def export(
         path.chmod(0o600)  # the trail names hosts and the commands run on them
         info(f"{count} entries written to {path}")
     context.audit.append("audit.export", status="ok", note=f"cli; {count} entries as {fmt}")
+
+
+@app.command("verify")
+def verify(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
+    """Check that no line of the trail was changed, removed or put in between.
+
+    Each line carries the hash of the one before it. This shows a line touched in the middle; a
+    trail rewritten from the start shows only against a link you noted down earlier.
+    """
+    context = build_context(write_ssh_config=False)
+    result = context.audit.verify()
+    if as_json:
+        emit_json(
+            {"entries": result.entries, "unlinked": result.unlinked, "breaks": result.breaks, "head": result.head},
+            ok=result.intact,
+        )
+        raise typer.Exit(Exit.OK if result.intact else Exit.FAILED)
+    files = ", ".join(str(p) for p in context.audit.files()) or str(context.audit.path)
+    if not result.entries:
+        console.print(f"no audit entries yet ({files})")
+        return
+    older = f"; {result.unlinked} older lines from before the chain cannot be vouched for" if result.unlinked else ""
+    if result.intact:
+        console.print(f"[green]intact[/green]: {result.entries} entries in {files}{older}")
+        console.print(f"last link {result.head}")
+        return
+    for message in result.breaks:
+        fail(message)
+    console.print(f"{len(result.breaks)} break(s) in {result.entries} entries ({files}){older}")
+    raise typer.Exit(Exit.FAILED)

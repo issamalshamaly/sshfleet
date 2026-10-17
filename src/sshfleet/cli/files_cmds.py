@@ -48,6 +48,10 @@ def ls(
     except (OSError, NotADirectoryError) as exc:
         fail(str(exc))
         raise typer.Exit(Exit.FAILED) from exc
+    context.audit.append(
+        "file.list", env=host.env, host=alias, target=listing.path, status="ok",
+        note="cli" + ("; with sudo" if listing.used_sudo else ""),
+    )
 
     entries = [e for e in listing.entries if hidden or not e.name.startswith(".")]
     if as_json:
@@ -228,9 +232,11 @@ def cat(
     try:
         text = asyncio.run(preview(context.runner, host, remote_path, max_bytes=limit, deny_extra=context.config.files.deny_extra))
     except DeniedPath as exc:
+        context.audit.append("file.preview", env=host.env, host=alias, target=remote_path, status="denied", note=exc.reason)
         fail(f"refused: {exc}")
         raise typer.Exit(Exit.USAGE) from exc
     except OSError as exc:
         fail(str(exc))
         raise typer.Exit(Exit.FAILED) from exc
+    context.audit.append("file.preview", env=host.env, host=alias, target=remote_path, status="ok", note="cli")
     console.print(text)

@@ -124,6 +124,13 @@ the sections after the summary say how each part works.
   `sshfleet audit export [--since 7d] [--action 'container.*'] [--env] [--host] [--status] [--jsonl]`.
   In a CSV, a cell that starts like a spreadsheet formula gets a leading quote. The bare
   `sshfleet audit` still lists the trail.
+* Each line carries the hash of the line before it; `sshfleet audit verify` names any line that
+  was changed, removed or slipped in. The trail is set aside at 10 MB, five files kept, and the
+  chain runs on across them. Two writers at once (the CLI and the web server) take turns.
+* Reads are recorded too: folders listed, files previewed or refused, log searches and follows
+  whether or not they are saved, and the end of a quick action as well as its start. A container
+  removed from the page is ignored from then on, and that now shows in the trail. The actor is the
+  account sshfleet runs as, not the `USER` variable, and each line names the process.
 
 ### Security
 

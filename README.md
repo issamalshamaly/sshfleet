@@ -368,6 +368,12 @@ Importing the same bundle again changes nothing, so `config diff` works as a pre
 `sshfleet audit export --since 7d --action 'container.*' [--jsonl]`. In a CSV, a cell that starts
 like a spreadsheet formula is written with a leading quote, so it shows as text.
 
+Each line carries the hash of the one before it, and `sshfleet audit verify` walks the chain: a
+line changed, removed or slipped in is named by file and line. That is evidence rather than
+protection, since whoever can write the file could write a whole new chain; the last link it
+prints, noted somewhere else, shows that too. Past 10 MB the file is set aside as
+`audit.1.jsonl` and a new one started, five of them kept, and the chain carries on across them.
+
 ## What it does
 
 **Fleet view.** Every host with load, memory, disk, containers running versus expected, a health
@@ -433,7 +439,7 @@ the prompt appears immediately.
 | `mux warm · status · reset · stop` | manage the shared connections |
 | `config history · show · restore` | every earlier state of the configuration, and putting one back |
 | `config export · import · diff` | the setup as a bundle: move it, share it, check it |
-| `audit [export]` | the audit trail, and its export as CSV or JSON Lines |
+| `audit [export\|verify]` | the audit trail, its export as CSV or JSON Lines, and a check of its chain |
 | `hosts · doctor · version` | inventory, self-check, version |
 
 Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing found,
@@ -476,8 +482,11 @@ Every command takes `--json` for scripting. Exit codes: `0` results, `1` nothing
 * **Your SSH config files are edited one stanza at a time**, never rewritten, and a copy of the
   whole file is kept before every change. Values are checked before they are written, so nothing
   can smuggle a second keyword (a `ProxyCommand`, say) onto a line.
-* **Every change is recorded.** Restarts, uploads, downloads, tunnel changes, opened shells and
-  every settings edit go to `~/.local/state/sshfleet/audit.jsonl`; read it with `sshfleet audit`.
+* **Every change is recorded, and so is what was looked at.** Restarts, uploads, downloads,
+  tunnel changes, opened shells, quick actions from start to end and every settings edit go to
+  `~/.local/state/sshfleet/audit.jsonl`, with the folders listed, the files previewed and the
+  logs searched or followed. Each line is linked to the one before; `sshfleet audit verify` checks
+  the chain (`tests/test_audit_chain.py`).
 * **Every earlier configuration can be put back.** History keeps each state of `config.yaml` and
   the SSH files. Restores and imports record the state before them, so either can be undone.
 * **A bundle never carries a key or a secret, and nothing in one runs on import.** Both are

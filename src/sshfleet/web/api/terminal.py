@@ -22,6 +22,7 @@ import pty
 import signal
 import struct
 import termios
+import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -102,6 +103,7 @@ async def terminal(websocket: WebSocket, alias: str):
             note=f"web terminal · {action.id}",
         )
 
+    started = time.monotonic()
     master_fd, slave_fd = pty.openpty()
     # Non-blocking in both directions: see the module docstring for what a blocking write costs.
     os.set_blocking(master_fd, False)
@@ -218,3 +220,15 @@ async def terminal(websocket: WebSocket, alias: str):
             os.close(master_fd)
         with contextlib.suppress(Exception):
             await websocket.close()
+        if action is not None:
+            # Its start is on the record; so is how it ended, whether it ran out or was closed.
+            ended = proc.returncode
+            context.audit.append(
+                "container.quick",
+                env=host.env,
+                host=alias,
+                target=container,
+                status="ok" if ended == 0 else "ended",
+                duration_ms=int((time.monotonic() - started) * 1000),
+                note=f"web terminal · {action.id}" + (f" · exit {ended}" if ended is not None else ""),
+            )

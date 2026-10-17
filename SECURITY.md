@@ -19,7 +19,11 @@
   origin can call it, and the terminal socket refuses any page but its own. The token and the
   cookie value are kept in `~/.local/state/sshfleet/web-session.json` (0600); delete it to sign
   every browser out at the next start.
-* Everything it changes is written to an audit log under `~/.local/state/sshfleet/`.
+* Everything it changes, and every folder listed, file previewed and log searched, is written
+  to an audit log under `~/.local/state/sshfleet/`. Each line carries the hash of the one before;
+  `sshfleet audit verify` finds a line changed, removed or slipped in. Someone who can write the
+  file can also rewrite the whole chain, so note the last link it prints somewhere else if that
+  matters to you.
 
 ## Reporting a vulnerability
 
