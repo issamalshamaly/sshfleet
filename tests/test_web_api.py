@@ -515,3 +515,27 @@ async def test_an_environment_path_with_a_line_break_is_refused(web, tmp_path):
     assert "one line" in response.text
     response = await client.patch("/api/settings/environments/testing", json={"key_path": "/k\nProxyCommand id"})
     assert response.status_code == 422
+
+
+def test_web_on_a_taken_port_says_who_has_it(monkeypatch):
+    """It used to print uvicorn's "[Errno 98]" and then announce the address as if it had started."""
+    import socket
+
+    from sshfleet.web import server
+
+    with socket.socket() as other:
+        other.bind(("127.0.0.1", 0))
+        other.listen()
+        port = other.getsockname()[1]
+        monkeypatch.setattr(server, "create_app", lambda *_a, **_k: pytest.fail("must not start a second server"))
+
+        with pytest.raises(SystemExit, match=f"port {port} is taken by another program"):
+            server.run_web(port=port, open_browser=False)
+
+        # Our own server on it: say so and stop, rather than fail.
+        monkeypatch.setattr(server, "_already_serving", lambda _port: (True, False))
+        assert server.run_web(port=port, open_browser=False) is None
+
+        monkeypatch.setattr(server, "_already_serving", lambda _port: (True, True))
+        with pytest.raises(SystemExit, match="older sshfleet"):
+            server.run_web(port=port, open_browser=False)

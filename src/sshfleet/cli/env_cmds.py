@@ -80,9 +80,14 @@ def add(
 
     context.audit.append("env.add", env=name, target=str(ssh_config), status="ok")
 
+    # Registered either way; but a test that could not reach a bastion is a failed test, and a
+    # script running `env add --test` has to be able to tell.
+    tested = result.get("bastion_test")
+    unreachable = isinstance(tested, dict) and any(not outcome["ok"] for outcome in tested.values())
+
     if as_json:
-        emit_json(result)
-        return
+        emit_json(result, ok=not unreachable)
+        raise typer.Exit(Exit.FAILED if unreachable else Exit.OK)
 
     console.print(f"[green]registered[/green] environment [bold]{name}[/bold]: {len(hosts)} hosts, "
                   f"prefix {info_preview.prefix or '(none)'}, bastions: {', '.join(bastions) or '(none)'}")
@@ -94,6 +99,8 @@ def add(
         for alias, outcome in test_results.items():
             mark = "[green]ok[/green]" if outcome["ok"] else f"[red]{outcome['error']}[/red]"
             console.print(f"  bastion {alias}: {mark} ({outcome['seconds']}s)")
+    if unreachable:
+        raise typer.Exit(Exit.FAILED)
 
 
 @app.command("preview")

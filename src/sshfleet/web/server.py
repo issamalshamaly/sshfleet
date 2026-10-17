@@ -88,9 +88,38 @@ def create_app(context: Context | None = None) -> FastAPI:
     return app
 
 
+def _port_in_use(host: str, port: int) -> bool:
+    """Whether binding the port would fail. Same socket options as uvicorn, so a port that only
+    has connections in TIME_WAIT counts as free, as it does for uvicorn."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind((host, port))
+        except OSError:
+            return True
+    return False
+
+
 def run_web(host: str = "127.0.0.1", port: int = 8765, *, open_browser: bool = True, context: Context | None = None) -> None:
-    app = create_app(context)
     url = f"http://{host}:{port}/"
+    # A taken port used to surface as uvicorn's "[Errno 98] address already in use", printed
+    # above a line announcing the address as if it had started. Say who has it instead.
+    if _port_in_use(host, port):
+        serving, stale = _already_serving(port)
+        if serving and not stale:
+            print(f"sshfleet is already running at {url}", file=sys.stderr)
+            if open_browser:
+                webbrowser.open(url)
+            return
+        if serving:
+            raise SystemExit(
+                f"an older sshfleet is still running at {url}, started before this version was installed. "
+                "Stop it (Ctrl+C where it runs, or `sshfleet service stop`) and start this one again."
+            )
+        raise SystemExit(f"port {port} is taken by another program; choose another with `sshfleet web --port {port + 1}`")
+    app = create_app(context)
     if open_browser:
         # Give uvicorn a moment to bind before the browser asks.
         import threading

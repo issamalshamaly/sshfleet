@@ -44,6 +44,12 @@ the sections after the summary say how each part works.
   version.
 * `sshfleet hosts` crashed on any inventory; it lists the hosts again, with their label and a
   star for the ones in the default log search.
+* `sshfleet web` on a taken port says whether sshfleet is already running there (and opens it),
+  whether it is an older one to stop first, or which option picks another port — instead of
+  uvicorn's `[Errno 98]` under a line announcing the address.
+* `env add --test` exits with 4 when a bastion could not be reached, and `doctor` says to set
+  `ssh.control_dir` to a short directory when the socket path is too long, rather than
+  suggesting a `chmod` that cannot help.
 
 ### Phones and tablets
 

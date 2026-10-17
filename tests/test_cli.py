@@ -39,3 +39,34 @@ def test_hosts_lists_the_inventory(configured):
 def test_hosts_with_no_match_says_so_in_the_exit_code(configured):
     result = CliRunner().invoke(app, ["hosts", "--role", "nonexistent-role"])
     assert result.exit_code != 0
+
+
+def test_env_add_test_exits_non_zero_when_a_bastion_cannot_be_reached(paths, fake_ssh, scenario, sample_env_file):
+    """The environment is registered either way, but the test failed and a script must see it."""
+    scenario("bastion_down")
+    runner = CliRunner()
+    assert runner.invoke(app, ["project", "add", "lab"]).exit_code == 0
+    result = runner.invoke(app, ["env", "add", "-n", "testing", "-c", str(sample_env_file), "--project", "lab", "--json"])
+    assert result.exit_code == 4, result.output
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert any(not outcome["ok"] for outcome in payload["data"]["bastion_test"].values())
+
+
+def test_env_add_test_exits_zero_when_the_bastions_answer(paths, fake_ssh, sample_env_file):
+    runner = CliRunner()
+    assert runner.invoke(app, ["project", "add", "lab"]).exit_code == 0
+    result = runner.invoke(app, ["env", "add", "-n", "testing", "-c", str(sample_env_file), "--project", "lab", "--json"])
+    assert result.exit_code == 0, result.output
+
+
+def test_doctor_names_the_real_cure_for_a_control_path_that_is_too_long(context, tmp_path):
+    """It said "chmod 700", which cannot fix "ControlPath too long"."""
+    from sshfleet.doctor import run_checks
+
+    deep = tmp_path / ("d" * 60)
+    deep.mkdir(mode=0o700)
+    context.config.ssh.control_dir = str(deep)
+    check = next(c for c in run_checks(context) if c.name == "control dir")
+    assert check.level == "warn"
+    assert "ssh.control_dir" in check.fix and "chmod" not in check.fix

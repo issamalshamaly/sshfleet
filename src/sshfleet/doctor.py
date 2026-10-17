@@ -55,9 +55,17 @@ def run_checks(context: Context) -> list[Check]:
     if control.is_dir():
         mode = control.stat().st_mode & 0o777
         path_len = len(str(control)) + 1 + 64  # %C expands to a 64-char hash
-        level: Level = "ok" if mode == 0o700 and path_len < 100 else "warn"
+        too_long = path_len >= 100  # a Unix socket path is capped at 108 bytes (104 on macOS)
+        level: Level = "ok" if mode == 0o700 and not too_long else "warn"
         detail = f"{control} (mode {mode:04o}, socket path ~{path_len} bytes)"
-        checks.append(Check("control dir", level, detail, "" if level == "ok" else f"chmod 700 {control}"))
+        # The two problems have different cures: a long path makes every connection fail with
+        # "ControlPath too long", and no chmod fixes that.
+        fixes = []
+        if too_long:
+            fixes.append("set ssh.control_dir to a short directory, e.g. /tmp/sshfleet-$USER")
+        if mode != 0o700:
+            fixes.append(f"chmod 700 {control}")
+        checks.append(Check("control dir", level, detail, "; ".join(fixes)))
     else:
         checks.append(Check("control dir", "warn", f"{control} missing", "run any sshfleet command to create it"))
 
