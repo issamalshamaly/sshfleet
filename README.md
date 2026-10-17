@@ -9,7 +9,7 @@ a glance, a container restarted and checked until it is really back, several ser
 searched in one time window, files, tunnels and a shell, all through the `ssh` you already have.
 Nothing is installed on the servers, nothing listens beyond your machine, and no key is ever read.
 
-![sshfleet on its demo fleet: the fleet with its alerts, a bastion going down and coming back, a container restarted and verified, a search across three services](https://github.com/issamalshamaly/sshfleet/raw/main/docs/images/demo.gif)
+![sshfleet on its demo fleet: the fleet with its alerts, a bastion going down and coming back, a container restarted and verified](https://github.com/issamalshamaly/sshfleet/raw/main/docs/images/demo.gif)
 
 ## Who it is for
 
