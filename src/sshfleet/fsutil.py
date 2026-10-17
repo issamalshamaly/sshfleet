@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import os
 from pathlib import Path
+from typing import TextIO
 
 
 def real_path(path: Path) -> Path:
@@ -78,7 +79,7 @@ def make_private_dirs(path: Path) -> Path:
     return path
 
 
-def open_private(path: Path, mode: str = "w", *, encoding: str = "utf-8"):
-    """Open a file for writing that only this user can read, from the moment it exists."""
+def open_private(path: Path, *, encoding: str = "utf-8") -> TextIO:
+    """Open a text file for writing that only this user can read, from the moment it exists."""
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    return open(descriptor, mode, encoding=encoding)
+    return open(descriptor, "w", encoding=encoding)

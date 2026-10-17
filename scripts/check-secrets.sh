@@ -32,6 +32,13 @@ if git ls-files | grep -nE '\.(pem|key|p12|pfx)$|(^|/)id_(rsa|ed25519|ecdsa|dsa)
     status=1
 fi
 
+# ...and whatever it is called, a key is a header alone on its line. Test strings that mention
+# one sit inside quotes, so they do not match.
+if git grep --untracked -nIE '^[[:space:]]*(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|PuTTY-User-Key-File-[0-9]+:)' -- . ':!scripts/check-secrets.sh'; then
+    echo "check-secrets: the lines above start a private key." >&2
+    status=1
+fi
+
 if [ "$status" -eq 0 ]; then
     echo "check-secrets: clean"
 fi

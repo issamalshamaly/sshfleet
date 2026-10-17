@@ -18,6 +18,7 @@ writes happen under an ``flock``.
 
 from __future__ import annotations
 
+import builtins
 import calendar
 import contextlib
 import difflib
@@ -26,7 +27,7 @@ import hashlib
 import json
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -125,7 +126,7 @@ class StateRecord:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StateRecord:
         files = [FileEntry(**entry) for entry in data.get("files") or []]
-        known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__ and k != "files"}  # type: ignore[attr-defined]
+        known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__ and k != "files"}
         return cls(files=files, **known)
 
 
@@ -333,7 +334,7 @@ class History:
 
     def record(
         self,
-        files: list[TrackedFile],
+        files: builtins.list[TrackedFile],
         *,
         reason: str,
         source: str,
@@ -376,21 +377,23 @@ class History:
             self._prune()
             return state, True
 
-    def _changes(self, before: StateRecord | None, read: list[tuple[FileEntry, bytes | None]], parsed: dict[str, Any] | None) -> dict[str, Any]:
+    def _changes(
+        self, before: StateRecord | None, read: builtins.list[tuple[FileEntry, bytes | None]], parsed: dict[str, Any] | None
+    ) -> dict[str, Any]:
         if before is None:
             return {"first": True}
-        files: list[dict[str, str]] = []
+        files: builtins.list[dict[str, str]] = []
         hosts_before: set[str] = set()
         hosts_after: set[str] = set()
         config_before: dict[str, Any] | None = None
         now = {entry.path: (entry, data) for entry, data in read}
-        for old in before.files:
-            if old.role == ROLE_SSH:
+        for kept in before.files:
+            if kept.role == ROLE_SSH:
                 with contextlib.suppress(HistoryError):
-                    hosts_before |= _host_patterns(self.content(old))
-            elif old.role == ROLE_CONFIG:
+                    hosts_before |= _host_patterns(self.content(kept))
+            elif kept.role == ROLE_CONFIG:
                 with contextlib.suppress(HistoryError):
-                    config_before = _yaml(self.content(old))
+                    config_before = _yaml(self.content(kept))
         for path, (entry, data) in now.items():
             if entry.role == ROLE_SSH:
                 hosts_after |= _host_patterns(data)
@@ -458,7 +461,7 @@ def _why_unavailable(entry: FileEntry) -> str:
 
 
 def compare(
-    older: list[tuple[FileEntry, bytes | None]], newer: list[tuple[FileEntry, bytes | None]]
+    older: Sequence[tuple[FileEntry, bytes | None]], newer: Sequence[tuple[FileEntry, bytes | None]]
 ) -> list[FileDiff]:
     """File by file, what turns ``older`` into ``newer``."""
     old_by_path = {entry.path: (entry, data) for entry, data in older}

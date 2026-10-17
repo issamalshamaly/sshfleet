@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -114,7 +114,7 @@ async def events(request: Request):
     state = _state(request)
     queue = state.events.subscribe()
 
-    async def stream() -> AsyncIterator[bytes]:
+    async def stream() -> AsyncGenerator[bytes, None]:
         try:
             yield (json.dumps({"type": "hello", "clients": state.events.clients}) + "\n").encode()
             while True:

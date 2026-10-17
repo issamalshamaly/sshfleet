@@ -848,11 +848,11 @@ def plan_import(
 
     base = {path: _sha(Path(path)) for path in files_after}
     base[str(paths.config_file)] = _sha(paths.config_file)
-    diffs = {}
-    for path, text in files_after.items():
-        before = Path(path).read_text() if Path(path).exists() else ""
-        diffs[path] = "".join(
-            difflib.unified_diff(before.splitlines(keepends=True), text.splitlines(keepends=True), fromfile=f"a/{Path(path).name}", tofile=f"b/{Path(path).name}")
+    diffs: dict[str, str] = {}
+    for name, text in files_after.items():
+        before = Path(name).read_text() if Path(name).exists() else ""
+        diffs[name] = "".join(
+            difflib.unified_diff(before.splitlines(keepends=True), text.splitlines(keepends=True), fromfile=f"a/{Path(name).name}", tofile=f"b/{Path(name).name}")
         )
     digest = hashlib.sha256(
         json.dumps({"config": final, "files": files_after, "base": base}, sort_keys=True, default=str).encode()

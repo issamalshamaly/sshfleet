@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -238,7 +238,7 @@ async def job_stream(request: Request, job_id: str):
     if job is None:
         raise HTTPException(404, "unknown job")
 
-    async def stream() -> AsyncIterator[bytes]:
+    async def stream() -> AsyncGenerator[bytes, None]:
         sent = 0
         while True:
             while sent < len(job.steps):

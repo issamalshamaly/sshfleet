@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -64,7 +64,7 @@ def add(
 
     hosts = [h for h in context.inventory.hosts(name)]
     bastions = context.inventory.environment(name).bastions
-    result: dict[str, object] = {
+    result: dict[str, Any] = {
         "environment": env_cfg.name,
         "hosts": len(hosts),
         "bastions": bastions,
@@ -146,7 +146,7 @@ def preview_cmd(
 def list_envs(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
     """List registered environments."""
     context = build_context(write_ssh_config=False)
-    data = []
+    data: list[dict[str, Any]] = []
     for env in context.config.environments:
         try:
             hosts = context.inventory.hosts(env.name)
@@ -202,9 +202,9 @@ def test_env(
         fail(str(exc))
         raise typer.Exit(Exit.USAGE) from exc
 
-    async def run() -> dict[str, object]:
+    async def run() -> dict[str, Any]:
         results = await context.mux.warm_bastions(environment.name)
-        payload: dict[str, object] = {
+        payload: dict[str, Any] = {
             "bastions": {a: {"ok": r.ok, "error": r.message, "seconds": round(r.elapsed, 2)} for a, r in results.items()}
         }
         target = host or next((h.alias for h in environment.hosts if h.proxy_jump), None)
@@ -219,13 +219,13 @@ def test_env(
         return payload
 
     payload = asyncio.run(run())
-    ok = all(b["ok"] for b in payload["bastions"].values()) if payload.get("bastions") else False  # type: ignore[union-attr]
+    ok = all(b["ok"] for b in payload["bastions"].values()) if payload.get("bastions") else False
 
     if as_json:
         emit_json(payload, ok=ok)
         raise typer.Exit(Exit.OK if ok else Exit.FAILED)
 
-    for alias, outcome in payload["bastions"].items():  # type: ignore[union-attr]
+    for alias, outcome in payload["bastions"].items():
         mark = "[green]ok[/green]" if outcome["ok"] else f"[red]{outcome['error']}[/red]"
         console.print(f"bastion {alias}: {mark} ({outcome['seconds']}s)")
     host_result = payload.get("host")

@@ -192,8 +192,8 @@ def restore(
             console.print(f"  [dim]same[/dim]   {path}")
         for path in plan.left_in_place:
             console.print(f"  [dim]left[/dim]   {path} (not part of that state; left as it is)")
-        for item in plan.unavailable:
-            console.print(f"  [dim]kept[/dim]   {item['path']} ({item['why']}; left as it is)")
+        for missing in plan.unavailable:
+            console.print(f"  [dim]kept[/dim]   {missing['path']} ({missing['why']}; left as it is)")
         if plan.migrated:
             console.print("  config.yaml is upgraded to the current layout on the way back")
     if not plan.writes:

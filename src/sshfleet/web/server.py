@@ -179,7 +179,7 @@ def open_desktop_window(url: str, *, which=shutil.which, run=subprocess.run, ope
     Chromium-family browser in app mode, which is a clean window. Then any browser at all.
     """
     try:
-        import webview  # type: ignore[import-not-found]
+        import webview
 
         webview.create_window("sshfleet", url, width=1500, height=950, min_size=(1000, 650))
         webview.start()

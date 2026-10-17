@@ -84,3 +84,8 @@ packages = ["sshfleet"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
+
+# pywebview comes with the optional `desktop` extra; without it the import is simply absent.
+[[tool.mypy.overrides]]
+module = ["webview"]
+ignore_missing_imports = true

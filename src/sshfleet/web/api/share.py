@@ -10,7 +10,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Annotated
+from functools import partial
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -102,13 +103,15 @@ async def import_bundle(
         bundle = parse(await _body(request))
     except BundleError as exc:
         raise HTTPException(400, str(exc)) from exc
-    options = {"mode": mode, "prefer": prefer, "allow_commands": allow_commands, "with_local": with_local}
+    options: dict[str, Any] = {"mode": mode, "prefer": prefer, "allow_commands": allow_commands, "with_local": with_local}
     manifest = bundle.get("manifest") or {}
     about = {k: manifest.get(k) for k in ("created_at", "created_on", "sshfleet_version", "scope", "with_local")}
     if dry_run:
         await state.catch_up()
         try:
-            plan = await asyncio.to_thread(plan_import, bundle, config=state.context.config, paths=state.context.paths, **options)
+            plan = await asyncio.to_thread(
+                partial(plan_import, bundle, config=state.context.config, paths=state.context.paths, **options)
+            )
         except BundleError as exc:
             raise HTTPException(400, str(exc)) from exc
         return {"bundle": about, "plan": plan.to_dict()}

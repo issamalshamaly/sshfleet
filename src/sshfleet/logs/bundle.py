@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 from .. import __version__
 from ..fsutil import make_private_dirs, open_private
@@ -38,7 +39,7 @@ class Bundle:
     request: SearchRequest
     env: str
     files: dict[str, Path] = field(default_factory=dict)
-    _handles: dict[str, object] = field(default_factory=dict)
+    _handles: dict[str, TextIO] = field(default_factory=dict)
     _merged: list[LogLine] = field(default_factory=list)
     _keep_merged: bool = True
     merged_limit: int = 200_000
@@ -47,7 +48,7 @@ class Bundle:
         # A bundle is production log output: private, like the config and the audit log.
         make_private_dirs(self.directory)
 
-    def _handle(self, label: str, source_id: str):
+    def _handle(self, label: str, source_id: str) -> TextIO:
         handle = self._handles.get(source_id)
         if handle is None:
             name = f"{slug(label, 30)}.log"
@@ -62,7 +63,7 @@ class Bundle:
         return handle
 
     def add(self, line: LogLine) -> None:
-        self._handle(line.label, line.source_id).write(line.text + "\n")  # type: ignore[union-attr]
+        self._handle(line.label, line.source_id).write(line.text + "\n")
         if self._keep_merged:
             self._merged.append(line)
             if len(self._merged) > self.merged_limit:
@@ -83,7 +84,7 @@ class Bundle:
 
     def close(self, summary: SearchDone) -> Path:
         for handle in self._handles.values():
-            handle.close()  # type: ignore[union-attr]
+            handle.close()
         merged = self._write_merged()
 
         sources = []

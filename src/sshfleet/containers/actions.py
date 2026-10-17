@@ -179,7 +179,8 @@ async def verify(
         result = await runner.run_script(host, script, timeout=15, retries=0)
         elapsed = time.monotonic() - started
         if not result.ok:
-            yield VerifyStep(Phase.POLLING, f"probe failed: {result.error().message if result.error() else 'error'}", elapsed)
+            error = result.error()
+            yield VerifyStep(Phase.POLLING, f"probe failed: {error.message if error else 'error'}", elapsed)
             await asyncio.sleep(POLL_INTERVAL)
             continue
 

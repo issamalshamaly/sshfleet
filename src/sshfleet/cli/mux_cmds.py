@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -62,7 +62,7 @@ def status(
     context = build_context()
     aliases = [h.alias for h in context.inventory.hosts(env)]
     alive = asyncio.run(context.mux.status(aliases)) if aliases else {}
-    payload = {
+    payload: dict[str, Any] = {
         "ssh_config": str(context.mux.ssh_config),
         "control_dir": str(context.mux.control_dir()),
         "alive": sorted(a for a, ok in alive.items() if ok),

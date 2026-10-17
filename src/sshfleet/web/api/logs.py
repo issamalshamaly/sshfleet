@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -208,7 +208,7 @@ async def search(request: Request, body: SearchBody):
 
     coordinator = SearchCoordinator(context.runner, context.inventory, context.config)
 
-    async def stream() -> AsyncIterator[bytes]:
+    async def stream() -> AsyncGenerator[bytes, None]:
         yield (json.dumps({"type": "start", "sources": [source_payload(s) for s in chosen]}) + "\n").encode()
         summary: SearchDone | None = None
         try:
@@ -267,7 +267,7 @@ async def follow_logs(request: Request, body: FollowBody):
     limit = context.config.logs.follow_max_sources
     chosen = chosen[:limit]
 
-    async def stream() -> AsyncIterator[bytes]:
+    async def stream() -> AsyncGenerator[bytes, None]:
         yield (json.dumps({"type": "start", "sources": [source_payload(s) for s in chosen]}) + "\n").encode()
         async for event in follow(context.runner, context.inventory, chosen, pattern=body.pattern, since=body.since):
             if isinstance(event, LogLine):

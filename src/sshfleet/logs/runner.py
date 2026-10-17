@@ -175,6 +175,7 @@ class SourceRunner:
             await proc_module.feed_stdin(proc, self.pipeline.script.encode())
 
             async def read_stderr() -> None:
+                assert proc.stderr is not None  # spawned with stderr=PIPE
                 chunks = []
                 while True:
                     chunk = await proc.stderr.read(4096)
