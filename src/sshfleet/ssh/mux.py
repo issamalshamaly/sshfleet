@@ -16,7 +16,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config import Config
+from ..config import Config, ConfigError
 from ..inventory import EnvScope, Inventory, common_prefix
 from ..paths import Paths
 from . import argv as A
@@ -38,6 +38,19 @@ DEFAULT_IDENTITIES = (
 def _existing_default_identities() -> list[str]:
     """Default identity paths that exist (checked with stat; the files are never opened)."""
     return [path for path in DEFAULT_IDENTITIES if Path(path).expanduser().exists()]
+
+
+def _one_line(value: object, what: str) -> str:
+    """A configured value as it goes into the generated config: on one line, or refused.
+
+    The file is written line by line, so a value carrying a line break would add lines of its
+    own — a ``ProxyCommand``, say, which ssh runs on this machine. The settings page, a
+    hand-edited config and an imported bundle all end up here.
+    """
+    text = str(value)
+    if any(ord(ch) < 32 or ch == "\x7f" for ch in text):
+        raise ConfigError(f"{what} contains a line break or a control character: {text!r}")
+    return text
 
 
 def _render_alias_match(prefix: str | None, aliases: list[str]) -> list[str]:
@@ -83,28 +96,28 @@ class MuxManager:
 
     def render_config(self) -> str:
         ssh = self.config.ssh
-        control = self.control_dir()
+        control = _one_line(self.control_dir(), "ssh.control_dir")
         lines = [
             HEADER,
             "Host *\n",
             "    ControlMaster auto\n",
             f"    ControlPath {control}/%C\n",
-            f"    ControlPersist {ssh.control_persist}\n",
-            f"    ServerAliveInterval {ssh.server_alive_interval_s}\n",
+            f"    ControlPersist {_one_line(ssh.control_persist, 'ssh.control_persist')}\n",
+            f"    ServerAliveInterval {_one_line(ssh.server_alive_interval_s, 'ssh.server_alive_interval_s')}\n",
             "    ServerAliveCountMax 3\n",
-            f"    ConnectTimeout {ssh.connect_timeout_s}\n",
+            f"    ConnectTimeout {_one_line(ssh.connect_timeout_s, 'ssh.connect_timeout_s')}\n",
             "    BatchMode yes\n",
         ]
         if ssh.compression:
             lines.append("    Compression yes\n")
         lines += [
-            f"    StrictHostKeyChecking {ssh.strict_host_key_checking}\n",
+            f"    StrictHostKeyChecking {_one_line(ssh.strict_host_key_checking, 'ssh.strict_host_key_checking')}\n",
             "    UpdateHostKeys no\n",
             "    LogLevel ERROR\n",
         ]
 
         for env_cfg in self.config.environments:
-            lines.append(f"\n# environment: {env_cfg.name}\n")
+            lines.append(f"\n# environment: {_one_line(env_cfg.name, 'environment name')}\n")
             if env_cfg.key_path:
                 # Inner hosts behind the bastion carry no IdentityFile of their own; add the
                 # environment key for the whole alias pattern. IdentityFile is additive, so
@@ -112,7 +125,7 @@ class MuxManager:
                 aliases: list[str] = []
                 prefix: str | None = None
                 if env_cfg.alias_pattern != "auto":
-                    prefix = env_cfg.alias_pattern.rstrip("*")
+                    prefix = _one_line(env_cfg.alias_pattern, f"{env_cfg.name}: alias_pattern").rstrip("*")
                 elif self.inventory is not None:
                     with contextlib.suppress(KeyError):
                         environment = self.inventory.environment(env_cfg.name)
@@ -121,7 +134,7 @@ class MuxManager:
                 if prefix or aliases:
                     for host_line in _render_alias_match(prefix, aliases):
                         lines.append(host_line + "\n")
-                    lines.append(f"    IdentityFile {env_cfg.key_path}\n")
+                    lines.append(f"    IdentityFile {_one_line(env_cfg.key_path, f'{env_cfg.name}: key_path')}\n")
                     # Naming an IdentityFile drops OpenSSH's built-in defaults, which would
                     # break any host that authenticates with ~/.ssh/id_* — re-add them.
                     for default in _existing_default_identities():
@@ -130,7 +143,7 @@ class MuxManager:
             # only for hosts matching the key pattern above (or the previous environment's), and
             # every other alias in it would fail as "Could not resolve hostname".
             lines.append("Match all\n")
-            lines.append(f"Include {env_cfg.ssh_config_path}\n")
+            lines.append(f"Include {_one_line(env_cfg.ssh_config_path, f'{env_cfg.name}: ssh_config_path')}\n")
 
         if self.config.ssh.include_user_config:
             lines.append("\nMatch all\nInclude ~/.ssh/config\n")

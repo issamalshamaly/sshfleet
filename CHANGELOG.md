@@ -94,6 +94,10 @@
   hands the remote path to the host's shell. A path with characters a shell acts on is no longer
   given to it (the result says why), and the copy staged in /tmp for a root-owned upload gets a
   name made of safe characters.
+* The generated SSH config is written line by line, so a key path, SSH file path or environment
+  name with a line break in it could add a line of its own, such as a `ProxyCommand` run on this
+  machine. Such a value is refused when the config is written, and by the settings page when it
+  is entered.
 
 ### Environments
 

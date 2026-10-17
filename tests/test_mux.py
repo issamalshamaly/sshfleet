@@ -145,3 +145,23 @@ async def test_reset_socket_only_touches_our_own_control_dir(context, monkeypatc
     monkeypatch.setattr(context.mux, "control_path", fake_control_path)
     assert await context.mux.reset_socket("tst-order") is False
     assert victim.exists()
+
+
+@pytest.mark.parametrize("field", ["key_path", "ssh_config_path", "name"])
+def test_a_value_with_a_line_break_never_adds_lines_to_the_generated_config(paths, tmp_path: Path, field):
+    """The file is written line by line: a key path ending in "\\nProxyCommand …" would have
+    become a ProxyCommand that ssh runs on this machine."""
+    from sshfleet.config import Config, ConfigError, EnvironmentCfg
+    from sshfleet.inventory import build_inventory
+
+    env_file = tmp_path / "env"
+    env_file.write_text("Host alpha\n    HostName 10.0.0.1\n")
+    key = tmp_path / "k.pem"
+    key.write_text("x")
+    config = Config(environments=[EnvironmentCfg(name="plain", ssh_config_path=env_file, key_path=key)])
+    inventory = build_inventory(config)  # read while the file name is still a real one
+    environment = config.environments[0]
+    hostile = f"{getattr(environment, field)}\nProxyCommand touch {tmp_path / 'ran'}"
+    setattr(environment, field, hostile if field == "name" else Path(hostile))
+    with pytest.raises(ConfigError, match="line break"):
+        MuxManager(config, paths, inventory).render_config()

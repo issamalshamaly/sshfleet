@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ... import envsetup
 from ...config import ConfigError, EnvironmentCfg, HostRole, ProjectCfg, TunnelCfg
@@ -324,6 +324,13 @@ class PreviewBody(BaseModel):
     project: str | None = None
 
 
+def _one_line(value: str | None) -> str | None:
+    """Refused here, with the field named, rather than later when the ssh config is written."""
+    if value is not None and any(ord(ch) < 32 or ch == "\x7f" for ch in value):
+        raise ValueError("must be on one line, without control characters")
+    return value
+
+
 class EnvironmentBody(BaseModel):
     name: str
     ssh_config_path: str | None = None  # empty: create ~/.ssh/config.d/<project>_<short> and start with no hosts
@@ -333,6 +340,9 @@ class EnvironmentBody(BaseModel):
     bastions: list[str] | None = None
     project: str  # an environment always belongs to one
     replace: bool = False
+
+    # Each of these is written into the generated ssh config, one line per value.
+    _single_line = field_validator("name", "ssh_config_path", "key_path", "short")(_one_line)
 
 
 class EnvironmentPatch(BaseModel):
@@ -344,6 +354,8 @@ class EnvironmentPatch(BaseModel):
     bastions: list[str] | None = None
     project: str | None = None  # moves it to another project; never empty
     paused: bool | None = None  # stop monitoring every host in it, closing what is open to them
+
+    _single_line = field_validator("ssh_config_path", "key_path", "short")(_one_line)
 
 
 def _known_project(state: WebState, name: str | None) -> str:

@@ -493,3 +493,16 @@ async def test_a_task_holding_the_config_can_reload_without_waiting_on_itself(we
 
     summary = await asyncio.wait_for(restore_like(), timeout=5)
     assert summary["ok"]
+
+
+async def test_an_environment_path_with_a_line_break_is_refused(web, tmp_path):
+    """Each path becomes one line of the generated ssh config; a line break would add another."""
+    client, _ = web
+    response = await client.post(
+        "/api/settings/environments",
+        json={"name": "second", "ssh_config_path": f"{tmp_path}/env\nProxyCommand id", "project": "lab"},
+    )
+    assert response.status_code == 422
+    assert "one line" in response.text
+    response = await client.patch("/api/settings/environments/testing", json={"key_path": "/k\nProxyCommand id"})
+    assert response.status_code == 422
