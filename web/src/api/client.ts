@@ -252,17 +252,18 @@ export const api = {
       }),
     sshInclude: () => request<SshInclude>("/api/settings/ssh-include"),
     addSshInclude: () => request<SshInclude & { ok: boolean; backup: string | null }>("/api/settings/ssh-include", { method: "POST" }),
-    updateEnvironment: (name: string, body: Record<string, unknown>) =>
-      request<{ ok: boolean; reload: ReloadSummary }>(`/api/settings/environments/${encodeURIComponent(name)}`, {
+    // Environments are addressed by id: a name is unique only inside its project.
+    updateEnvironment: (id: string, body: Record<string, unknown>) =>
+      request<{ ok: boolean; reload: ReloadSummary }>(`/api/settings/environments/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    removeEnvironment: (name: string) =>
-      request<{ ok: boolean; reload: ReloadSummary }>(`/api/settings/environments/${encodeURIComponent(name)}`, {
+    removeEnvironment: (id: string) =>
+      request<{ ok: boolean; reload: ReloadSummary }>(`/api/settings/environments/${encodeURIComponent(id)}`, {
         method: "DELETE",
       }),
-    testEnvironment: (name: string) =>
-      request<ConnectionTest>(`/api/settings/environments/${encodeURIComponent(name)}/test`, { method: "POST" }),
+    testEnvironment: (id: string) =>
+      request<ConnectionTest>(`/api/settings/environments/${encodeURIComponent(id)}/test`, { method: "POST" }),
     addHost: (body: Record<string, unknown>) =>
       request<{ ok: boolean; alias: string; file: string; backup: string; reload: ReloadSummary }>("/api/settings/hosts", {
         method: "POST",

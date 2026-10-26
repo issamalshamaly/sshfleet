@@ -617,7 +617,7 @@ class WebState:
                     "project": cfg.project,
                     "hosts": len(environment.hosts),
                     "bastions": environment.bastions,
-                    "production": "prod" in environment.name.lower(),
+                    "production": cfg.is_production,
                     "paused": cfg.paused,  # its own flag; its project's is on the project
                 }
             )

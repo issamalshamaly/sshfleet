@@ -50,7 +50,7 @@ async def preview(request: Request, alias: str, name: str):
         "host": alias,
         "container": name,
         "env": environment.name,
-        "production": "prod" in environment.name.lower(),
+        "production": environment.is_production,
         "command": command.render(),
         "preview": command.preview(str(state.context.mux.ssh_config)),
         "current": {"state": current.state, "status": current.status, "restarts": current.restart_count} if current else None,
@@ -97,7 +97,7 @@ async def restart(request: Request, alias: str, name: str, body: RestartBody):
         raise HTTPException(400, str(exc)) from exc
 
     environment = context.config.environment(host.env)
-    if "prod" in environment.name.lower() and body.confirm.strip() != name:
+    if environment.is_production and body.confirm.strip() != name:
         raise HTTPException(400, "production restarts require the container name to be typed")
 
     job = state.new_job("restart", f"{alias}/{name}")

@@ -60,6 +60,25 @@ def test_env_add_test_exits_zero_when_the_bastions_answer(paths, fake_ssh, sampl
     assert result.exit_code == 0, result.output
 
 
+def test_env_add_records_production_when_told_and_says_when_it_guessed(paths, fake_ssh, sample_env_file, monkeypatch):
+    from sshfleet.cli.output import console
+
+    runner = CliRunner()
+    assert runner.invoke(app, ["project", "add", "lab"]).exit_code == 0
+    told = runner.invoke(app, ["env", "add", "-n", "main", "-c", str(sample_env_file), "--project", "lab", "--production", "--no-test", "--json"])
+    assert told.exit_code == 0, told.output
+    assert json.loads(told.output)["data"]["production"] is True and json.loads(told.output)["data"]["production_set"] is True
+
+    guessed = runner.invoke(app, ["env", "add", "-n", "live", "-c", str(sample_env_file), "--project", "lab", "--no-test"])
+    assert guessed.exit_code == 0, guessed.output
+    assert "production: yes, guessed from its name" in guessed.output
+
+    listed = json.loads(runner.invoke(app, ["env", "list", "--json"]).output)["data"]
+    assert [(e["name"], e["production"], e["production_set"]) for e in listed] == [("main", True, True), ("live", True, False)]
+    monkeypatch.setattr(console, "width", 240)  # room for the long temporary paths
+    assert "yes (by name)" in runner.invoke(app, ["env", "list"]).output
+
+
 def test_doctor_names_the_real_cure_for_a_control_path_that_is_too_long(context, tmp_path):
     """It said "chmod 700", which cannot fix "ControlPath too long"."""
     from sshfleet.doctor import run_checks

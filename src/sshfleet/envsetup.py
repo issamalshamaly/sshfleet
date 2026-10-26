@@ -261,6 +261,7 @@ def add_environment(
     project: str | None = None,
     replace: bool = False,
     create_file: bool = False,
+    production: bool | None = None,
 ) -> EnvironmentCfg:
     """Add (or replace) an environment in the config object. Does not save.
 
@@ -270,6 +271,9 @@ def add_environment(
     With ``create_file`` a path that does not exist yet is created empty, so hosts can be added
     afterwards; without it the file must exist, though it may still be empty. Nothing is created
     until everything else has been checked, so a refused registration leaves no file behind.
+
+    ``production`` is the operator's word on whether it is production; None leaves it to the name
+    (see EnvironmentCfg.is_production), or, when replacing, keeps what was said before.
     """
     clean_project = (project or "").strip()
     if not clean_project:
@@ -301,6 +305,7 @@ def add_environment(
         project=clean_project,
         # Replacing keeps the id, so its hosts, tunnels and history still point at it.
         id=existing.id if existing else new_env_id(config, clean_project, name),
+        production=production if production is not None or not existing else existing.production,
     )
     if existing:
         config.environments[config.environments.index(existing)] = env_cfg

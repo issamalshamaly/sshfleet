@@ -268,6 +268,18 @@ function ProjectDrawer({
                           production
                         </Badge>
                       )}
+                      {/* Registered before the setting: its name still decides, until someone says. */}
+                      {!environment.production_set && (
+                        <Tooltip
+                          label="Whether this is production is still guessed from its name. Open Edit and say so yourself."
+                          multiline
+                          maw={280}
+                        >
+                          <Badge size="xs" color="gray" variant="outline">
+                            {environment.production ? "by its name" : "not production · by its name"}
+                          </Badge>
+                        </Tooltip>
+                      )}
                       {(environment.paused || project.paused) && (
                         <Badge size="xs" color="orange" variant="light" leftSection={<IconPlayerPause size={10} />}>
                           {environment.paused ? "paused" : "paused with the project"}

@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Group, Menu, NavLink, Stack, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Badge, Box, Group, Menu, NavLink, Stack, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import {
   IconActivity,
   IconArrowsExchange,
@@ -171,6 +171,12 @@ export function EnvironmentList({ onPick }: { onPick?: () => void }) {
             <Text size="sm" tt="capitalize">
               {environment.name}
             </Text>
+            {/* Always in sight, so nobody acts on production thinking it is something else. */}
+            {environment.production && (
+              <Badge size="xs" color="red" variant="filled" radius="sm">
+                prod
+              </Badge>
+            )}
           </Group>
         }
         description={

@@ -13,6 +13,7 @@ import {
   ScrollArea,
   Select,
   Stack,
+  Switch,
   TagsInput,
   Text,
   TextInput,
@@ -31,6 +32,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { ConnectionTest, EnvironmentSettings, KeyInfo, ProjectSettings, Settings } from "../../api/types";
 import { useInvalidateSettings } from "../../hooks/useSettings";
+import { looksLikeProduction } from "../../lib/production";
 import { useIsPhone } from "../../lib/responsive";
 import { envColor } from "../../theme";
 import { InfoTip, ResponsiveModal, ResponsiveSegmented, StickyActions } from "../responsive";
@@ -116,6 +118,10 @@ export function EnvironmentModal({
   const [keyPath, setKeyPath] = useState("");
   const [bastions, setBastions] = useState<string[]>([]);
   const [project, setProject] = useState<string | null>(null);
+  // Whether it is production is always the operator's answer, recorded on save. Until they touch
+  // the switch on a new environment, it follows a guess from the name as it is typed.
+  const [production, setProduction] = useState(false);
+  const [productionTouched, setProductionTouched] = useState(false);
 
   const candidates = useQuery({ queryKey: ["settings", "ssh-configs"], queryFn: api.settings.sshConfigs, enabled: opened });
   const keys = useQuery({ queryKey: ["settings", "keys"], queryFn: api.settings.keys, enabled: opened });
@@ -132,7 +138,10 @@ export function EnvironmentModal({
     // With one project there is nothing to choose; with several the operator picks.
     // Opened from a project's own panel, so that is the project unless it is being moved.
     setProject(editing?.project ?? defaultProject ?? (projects.length === 1 ? projects[0].name : null));
+    setProduction(editing?.production ?? false);
+    setProductionTouched(!!editing);
   }, [opened, editing, projects, defaultProject]);
+  const isProduction = productionTouched ? production : looksLikeProduction(name.trim());
 
   // Parse the chosen file as soon as it looks like a path, so the operator sees what they get.
   // Starting empty, the file is named <project>_<short>, so those drive the preview instead.
@@ -167,6 +176,7 @@ export function EnvironmentModal({
         key_path: keyPath.trim(),
         bastions,
         project,
+        production: isProduction,
       };
       return editing
         ? api.settings.updateEnvironment(editing.id, { ...body, ssh_config_path: path.trim() })
@@ -347,6 +357,28 @@ export function EnvironmentModal({
             />
           </Grid.Col>
         </Grid>
+
+        <Card withBorder padding="sm" style={isProduction ? { background: "var(--mantine-color-red-light)" } : undefined}>
+          <Switch
+            color="red"
+            label="Production"
+            checked={isProduction}
+            onChange={(e) => {
+              setProduction(e.currentTarget.checked);
+              setProductionTouched(true);
+            }}
+            description={
+              <>
+                A container restart here asks for its name to be typed first, and its actions are shown in red.{" "}
+                {!productionTouched
+                  ? "Suggested from the name; check it, because a name such as main says nothing about what it is."
+                  : editing && !editing.production_set
+                    ? "Until now its name decided this; saving records your choice."
+                    : null}
+              </>
+            }
+          />
+        </Card>
 
         <Autocomplete
           label="Identity file"

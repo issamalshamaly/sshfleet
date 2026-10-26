@@ -84,6 +84,23 @@ async def test_production_restart_requires_typed_confirmation(web, context):
     assert "typed" in response.json()["detail"]
 
 
+async def test_production_is_what_the_operator_marks_whatever_the_name(web, context):
+    """An environment called "testing" marked production asks for the name; unmarked, it does not."""
+    client, _ = web
+    marked = await client.patch("/api/settings/environments/testing", json={"production": True})
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["environment"]["production"] is True and marked.json()["environment"]["production_set"] is True
+    assert (await client.get("/api/hosts/tst-order/containers/order-production/preview")).json()["production"] is True
+    assert [e["production"] for e in (await client.get("/api/config")).json()["environments"]] == [True]
+    refused = await client.post("/api/hosts/tst-order/containers/order-production/restart", json={"confirm": ""})
+    assert refused.status_code == 400 and "typed" in refused.json()["detail"]
+    assert any(e["action"] == "settings.env.update" and e.get("note") == "marked production" for e in context.audit.tail(10))
+
+    unmarked = await client.patch("/api/settings/environments/testing", json={"production": False})
+    assert unmarked.json()["environment"]["production"] is False
+    assert (await client.get("/api/hosts/tst-order/containers/order-production/preview")).json()["production"] is False
+
+
 async def test_container_routes_refuse_a_name_that_is_a_command(web, fake_ssh):
     client, _ = web
     name = "x$(touch sshfleet-pwned)"  # no "/": the name is one path segment of the route

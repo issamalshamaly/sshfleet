@@ -95,7 +95,9 @@ def _environment_payload(state: WebState, env_cfg: EnvironmentCfg) -> dict[str, 
         "bastions": list(bastions),
         "bastions_auto": env_cfg.bastions == "auto",
         "hosts": len(hosts),
-        "production": "prod" in env_cfg.name.lower(),
+        "production": env_cfg.is_production,
+        # False while the name still decides (an environment from before the setting existed).
+        "production_set": env_cfg.production is not None,
         "project": env_cfg.project,
         "paused": env_cfg.paused,  # its own flag; its project's is on the project
     }
@@ -341,6 +343,7 @@ class EnvironmentBody(BaseModel):
     bastions: list[str] | None = None
     project: str  # an environment always belongs to one
     replace: bool = False
+    production: bool | None = None  # None: its name decides until it is set (the form always sets it)
 
     # Each of these is written into the generated ssh config, one line per value.
     _single_line = field_validator("name", "ssh_config_path", "key_path", "short")(_one_line)
@@ -355,6 +358,7 @@ class EnvironmentPatch(BaseModel):
     bastions: list[str] | None = None
     project: str | None = None  # moves it to another project; never empty
     paused: bool | None = None  # stop monitoring every host in it, closing what is open to them
+    production: bool | None = None  # a restart there needs the container's name typed
 
     _single_line = field_validator("ssh_config_path", "key_path", "short")(_one_line)
 
@@ -447,6 +451,7 @@ async def add_environment(request: Request, body: EnvironmentBody):
             project=_known_project(state, body.project),
             replace=body.replace,
             create_file=True,
+            production=body.production,
         )
     except (ConfigError, FileNotFoundError) as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -514,6 +519,9 @@ async def update_environment(request: Request, env_id: str, body: EnvironmentPat
     pausing = body.paused is not None and body.paused != env_cfg.paused
     if pausing:
         env_cfg.paused = bool(body.paused)
+    marking = body.production is not None and body.production != env_cfg.is_production
+    if body.production is not None:
+        env_cfg.production = body.production
 
     _save(state)
     summary = await state.reload(reason=f"environment {env_cfg.project}/{env_cfg.name} changed")
@@ -521,7 +529,10 @@ async def update_environment(request: Request, env_id: str, body: EnvironmentPat
         "settings.env.update",
         env=env_cfg.id,
         status="ok",
-        note=("paused" if env_cfg.paused else "resumed") if pausing else None,
+        note="; ".join(
+            [*([("paused" if env_cfg.paused else "resumed")] if pausing else []),
+             *([("marked production" if env_cfg.production else "marked not production")] if marking else [])]
+        ) or None,
     )
     return {"ok": True, "environment": _environment_payload(state, env_cfg), "reload": summary}
 

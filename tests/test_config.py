@@ -372,6 +372,52 @@ def test_a_refused_registration_creates_no_file(tmp_path: Path):
     assert not target.exists() and not target.parent.exists()
 
 
+@pytest.mark.parametrize(
+    ("name", "guess"),
+    [
+        ("production", True), ("prodEnv", True), ("eu1prod", True), ("live", True), ("liveEnv", True),
+        ("eu1prd", True), ("PRD_EU", True), ("main", False), ("mainEnv", False), ("staging", False),
+        ("delivery", False), ("preprod", False), ("pre-production", False), ("nonProd", False),
+    ],
+)
+def test_production_is_guessed_from_the_name_only_as_a_suggestion(name: str, guess: bool):
+    from sshfleet.config import looks_like_production
+
+    assert looks_like_production(name) is guess
+
+
+def test_production_is_the_operators_word_once_given(tmp_path: Path):
+    def env(name: str, production: bool | None = None) -> EnvironmentCfg:
+        return EnvironmentCfg(name=name, ssh_config_path=SAMPLE, production=production)
+
+    # Unset, the name decides as it always did, and the newer guess only adds to that: preprod
+    # stays protected, live becomes so, main is left for the operator to mark.
+    assert [env(n).is_production for n in ("production", "preprod", "live", "main")] == [True, True, True, False]
+    assert env("main", True).is_production is True
+    assert env("production", False).is_production is False
+
+    path = tmp_path / "config.yaml"
+    config_loader.save(Config(environments=[env("main", True), env("staging")]), path)
+    raw = yaml.safe_load(path.read_text())
+    assert [e.get("production") for e in raw["environments"]] == [True, None]  # written once said
+    assert [e.production for e in config_loader.load(path).environments] == [True, None]
+
+    raw["environments"][0]["production"] = "sometimes"
+    path.write_text(yaml.safe_dump(raw))
+    with pytest.raises(ConfigError, match="production is true or false"):
+        config_loader.load(path)
+
+
+def test_replacing_an_environment_keeps_what_was_said_about_production(tmp_path: Path):
+    config = config_loader.load(tmp_path / "absent.yaml")
+    envsetup.add_project(config, name="acme")
+    envsetup.add_environment(config, name="main", ssh_config_path=SAMPLE, project="acme", production=True)
+    replaced = envsetup.add_environment(config, name="main", ssh_config_path=SAMPLE, project="acme", replace=True)
+    assert replaced.production is True
+    marked = envsetup.add_environment(config, name="main", ssh_config_path=SAMPLE, project="acme", replace=True, production=False)
+    assert marked.production is False
+
+
 def test_preview_of_an_empty_or_missing_file_needs_allow_empty(tmp_path: Path):
     empty = tmp_path / "empty"
     empty.write_text("# nothing here\n")

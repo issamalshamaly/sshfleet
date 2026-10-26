@@ -28,6 +28,10 @@ def add(
     bastion: Annotated[list[str] | None, typer.Option("--bastion", help="Bastion alias (repeatable). Default: auto-detect from ProxyJump.")] = None,
     project: Annotated[str | None, typer.Option("--project", help="The project it belongs to. Create it first with `sshfleet project add`.")] = None,
     replace: Annotated[bool, typer.Option("--replace", help="Overwrite the project's environment of the same name.")] = False,
+    production: Annotated[
+        bool | None,
+        typer.Option("--production/--not-production", help="Whether it is production: a restart there needs the container's name typed. Default: guessed from the name."),
+    ] = None,
     test: Annotated[bool, typer.Option("--test/--no-test", help="Open the bastion connection after saving.")] = True,
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable output.")] = False,
 ) -> None:
@@ -45,6 +49,7 @@ def add(
             bastions=list(bastion) if bastion else None,
             project=project,
             replace=replace,
+            production=production,
         )
     except ConfigError as exc:
         fail(str(exc))
@@ -73,6 +78,8 @@ def add(
         "ssh_config": str(ssh_config_path),
         "starred": sum(1 for h in hosts if h.main),
         "key_warning": key_note,
+        "production": env_cfg.is_production,
+        "production_set": env_cfg.production is not None,
     }
 
     if test and bastions:
@@ -94,6 +101,13 @@ def add(
     console.print(f"[green]registered[/green] environment [bold]{name}[/bold]{known_as}: {len(hosts)} hosts, "
                   f"prefix {info_preview.prefix or '(none)'}, bastions: {', '.join(bastions) or '(none)'}")
     console.print(f"generated ssh config: {ssh_config_path}")
+    if env_cfg.production is None:
+        console.print(
+            f"production: {'yes' if env_cfg.is_production else 'no'}, guessed from its name "
+            "[dim](record it with --production or --not-production and --replace)[/dim]"
+        )
+    else:
+        console.print(f"production: {'yes' if env_cfg.production else 'no'}")
     if key_note:
         err_console.print(f"[yellow]key warning[/yellow] {key_note}")
     test_results = result.get("bastion_test")
@@ -166,6 +180,8 @@ def list_envs(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
                 "project": env.project,
                 "hosts": len(hosts),
                 "bastions": bastions,
+                "production": env.is_production,
+                "production_set": env.production is not None,
             }
         )
 
@@ -180,13 +196,22 @@ def list_envs(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
     console.print(
         table(
             "Environments",
-            ["name", *(["id"] if ids else []), "short", "project", "hosts", "bastions", "ssh config"],
+            ["name", *(["id"] if ids else []), "short", "project", "production", "hosts", "bastions", "ssh config"],
             [
-                [d["name"], *([d["id"]] if ids else []), d["short"], d["project"], d["hosts"], ", ".join(d["bastions"]), _home_relative(d["ssh_config"])]
+                [
+                    d["name"], *([d["id"]] if ids else []), d["short"], d["project"], _production_cell(d),
+                    d["hosts"], ", ".join(d["bastions"]), _home_relative(d["ssh_config"]),
+                ]
                 for d in data
             ],
         )
     )
+
+
+def _production_cell(entry: dict[str, Any]) -> str:
+    """yes or no, and whether that is the operator's word or a guess from the name."""
+    answer = "yes" if entry["production"] else "no"
+    return answer if entry["production_set"] else f"{answer} (by name)"
 
 
 def _home_relative(path: str) -> str:

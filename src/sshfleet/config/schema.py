@@ -6,6 +6,7 @@ binary, and every field has a default so a half-written file still loads.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -74,6 +75,22 @@ class ProjectCfg:
         return out
 
 
+#: Names that say "not production" although they hold "prod".
+_NOT_PRODUCTION = re.compile(r"(pre|non)[-_ .]?prod", re.IGNORECASE)
+
+
+def looks_like_production(name: str) -> bool:
+    """A guess from the name alone, offered when an environment is registered: ``prod`` anywhere
+    (``production``, ``prodEnv``, ``eu1prod``), or ``prd`` or ``live`` as a word (``liveEnv``,
+    ``eu1prd``), but not ``preprod`` or ``non-prod``. Only ever a suggestion: whether an
+    environment is production is the operator's to say, and ``main``, or a name in another
+    language, is theirs to mark."""
+    if _NOT_PRODUCTION.search(name):
+        return False
+    words = re.findall(r"[a-z]+|\d+", re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name).lower())
+    return "prod" in name.lower() or any(w in {"prd", "live"} for w in words)
+
+
 @dataclass(slots=True)
 class EnvironmentCfg:
     name: str
@@ -93,9 +110,21 @@ class EnvironmentCfg:
     #: projects can each have a ``staging``. It is the name unless that was taken when the
     #: environment was registered, and it never changes afterwards.
     id: str = ""
+    #: Whether it is production, as the operator said; None until they have. See is_production.
+    production: bool | None = None
 
     def __post_init__(self) -> None:
         self.id = self.id or self.name
+
+    @property
+    def is_production(self) -> bool:
+        """Whether acting on it asks for more: a container restart there needs the container's
+        name typed first. As the operator set it; while it is unset (an environment registered
+        before the setting existed) the name decides, as it always did with ``prod`` anywhere, and
+        the newer guess only adds to that, so no environment loses the protection it had."""
+        if self.production is not None:
+            return self.production
+        return "prod" in self.name.lower() or looks_like_production(self.name)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> EnvironmentCfg:
@@ -105,6 +134,9 @@ class EnvironmentCfg:
             raise ConfigError(f"environment {raw['name']!r} is missing 'ssh_config_path'")
         path = _expand(str(raw["ssh_config_path"]))
         assert path is not None
+        production = raw.get("production")
+        if production is not None and not isinstance(production, bool):
+            raise ConfigError(f"environment {raw['name']!r}: production is true or false, not {production!r}")
         return cls(
             name=str(raw["name"]),
             ssh_config_path=path,
@@ -116,6 +148,7 @@ class EnvironmentCfg:
             project=str(raw.get("project") or ""),
             paused=bool(raw.get("paused")),
             id=str(raw.get("id") or ""),
+            production=production,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -137,6 +170,8 @@ class EnvironmentCfg:
             out["project"] = self.project
         if self.paused:  # written only while it is set
             out["paused"] = True
+        if self.production is not None:  # written once the operator has said
+            out["production"] = self.production
         return out
 
 

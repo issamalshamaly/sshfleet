@@ -93,7 +93,7 @@ def restart(
         fail(str(exc))
         raise typer.Exit(Exit.USAGE) from exc
     environment = context.config.environment(host.env)
-    is_production = "prod" in environment.name.lower()
+    is_production = environment.is_production
 
     if not yes:
         env_label = Text(environment.name.upper(), style=f"bold {environment.color}")

@@ -225,7 +225,10 @@ export interface EnvironmentSettings {
   bastions: string[];
   bastions_auto: boolean;
   hosts: number;
+  /** A container restart there needs its name typed. */
   production: boolean;
+  /** False while its name still decides that (an environment from before the setting). */
+  production_set: boolean;
   project: string;
   /** Its own pause flag; its project's is on the project. */
   paused: boolean;

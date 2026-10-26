@@ -16,6 +16,12 @@ one is kept beside it.
   ambiguous.
 * An import matches environments by project and name, and gives a new one a free id here.
   Tunnels follow it.
+* Whether an environment is production is yours to say: a switch in the environment form, which
+  starts from a guess from the name, and `env add --production` / `--not-production`. It was
+  decided by `prod` appearing in the name alone, so `live` or `main` had no protection and
+  `preprod` had it whether wanted or not. An environment registered before keeps being judged by
+  its name, now also catching `prd` and `live`, until the answer is recorded. Production
+  environments carry a `prod` mark in the sidebar, and `env list` has a production column.
 
 ### Fixed
 

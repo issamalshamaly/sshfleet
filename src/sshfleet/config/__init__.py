@@ -18,6 +18,7 @@ from .schema import (
     SshCfg,
     Thresholds,
     TunnelCfg,
+    looks_like_production,
 )
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "Thresholds",
     "TunnelCfg",
     "load",
+    "looks_like_production",
     "save",
     "to_dict",
 ]

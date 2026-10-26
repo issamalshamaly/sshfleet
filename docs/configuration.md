@@ -8,8 +8,8 @@ projects:
   - {name: acme, color: violet, description: Customer platform}
   - {name: beta, color: teal}
 environments:
-  - {name: production, ssh_config_path: ~/.ssh/config.d/production, project: acme, short: prod}
-  - {name: production, id: beta-production, ssh_config_path: ~/.ssh/config.d/beta_prod, project: beta, short: prod}
+  - {name: production, ssh_config_path: ~/.ssh/config.d/production, project: acme, short: prod, production: true}
+  - {name: main, id: beta-main, ssh_config_path: ~/.ssh/config.d/beta_main, project: beta, short: main, production: true}
 refresh:     {fast_s: 120, connect_timeout_s: 10, collector_timeout_s: 25}
 concurrency: {global: 16, per_bastion: 8}
 thresholds:  {disk_warn_pct: 80, disk_crit_pct: 90, mem_warn_pct: 85, vanished_memory_s: 21600}
@@ -35,10 +35,20 @@ An environment's name has to be unique only inside its project, so two projects 
 `staging` and a `production`. Everything else — its hosts, tunnels, the audit trail, the web
 interface's links and `--env` — refers to it by its `id`, which is unique across every project.
 The id is the name unless another environment already had that id when this one was registered;
-then it is `<project>-<name>` (`beta-production` above). It is written to the file only when it
+then it is `<project>-<name>` (`beta-main` above, had another project's `main` come first). It is written to the file only when it
 differs from the name, and it never changes, not even when the project is renamed. On the command
 line an environment can also be named as `project/name`; a name or short label that two projects
 share is refused as ambiguous rather than guessed.
+
+`production: true` marks an environment as production: a container restart there needs the
+container's name typed first, in the web interface and on the command line, and its actions are
+shown in red with a `prod` mark beside it in the sidebar. It is yours to say, and the Settings
+form asks every time an environment is added; the name only suggests the answer (`prod`
+anywhere, or `prd` or `live` as a word, but not `preprod` or `non-prod`), so an environment called
+`main` is production only once you mark it. An environment registered before the setting has no
+`production` key, and its name decides as it always did: `prod` anywhere, and now `prd` and
+`live` as well. Saving it from the form, or `env add --production` / `--not-production` with
+`--replace`, records the answer.
 
 `hosts.<alias>.connect_timeout_s` overrides the fleet-wide `refresh.connect_timeout_s` for one
 host. A host can answer perfectly and still take half a minute to let you in — a wedged
