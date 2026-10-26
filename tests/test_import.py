@@ -46,7 +46,7 @@ def test_a_second_import_into_a_fresh_home_is_a_no_op(context, tmp_path: Path, m
     theirs = Paths.detect(tmp_path / "their-home").ensure()
 
     first = plan_import(bundle, config=Config(), paths=theirs)
-    assert first.changed and first.needs_key == ["testing"]
+    assert first.changed and first.needs_key == ["lab/testing"]
     env_file = tmp_path / "their-ssh" / "config.d" / "lab_test"
     assert list(first.files_after) == [str(env_file)]
     apply_import(first, theirs)
@@ -154,6 +154,15 @@ def test_a_local_key_and_pause_survive_an_import(context):
     assert result.config_after["hosts"]["tst-order"]["paused"] is True
 
 
+def test_an_environment_here_without_a_key_takes_the_bundles_key_path(context):
+    key_path = context.config.environments[0].key_path
+    bundle = exported(context, with_local=True)
+    context.config.environments[0].key_path = None
+    result = plan(context, bundle, with_local=True)
+    assert result.config_after["environments"][0]["key_path"] == str(key_path)
+    assert any(c.kind == "environment" and c.note == "its key path from the bundle" for c in result.changes)
+
+
 def test_a_tunnel_on_a_port_already_used_here_is_skipped(context):
     context.config.tunnels["mine"] = TunnelCfg(name="mine", env="testing", via="tst-order", remote="127.0.0.1:5432", local=15432)
     bundle = copy.deepcopy(exported(context))
@@ -165,6 +174,33 @@ def test_a_tunnel_on_a_port_already_used_here_is_skipped(context):
     assert "theirs" not in result.config_after["tunnels"]
 
 
+def test_an_environment_whose_name_another_project_has_here_comes_in_beside_it(context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Matched by project and name, not id: the id is each machine's own, and tunnels follow it."""
+    from sshfleet.config import EnvironmentCfg, ProjectCfg
+
+    context.config.tunnels["kibana"] = TunnelCfg(name="kibana", env="testing", via="tst-order", remote="127.0.0.1:5601", local=15601)
+    bundle = exported(context)
+    monkeypatch.setenv("SSHFLEET_SSH_DIR", str(tmp_path / "their-ssh"))
+    theirs = Paths.detect(tmp_path / "their-home").ensure()
+    mine = tmp_path / "mine-env"
+    mine.write_text("Host mine-one\n    HostName 10.0.0.9\n")
+    here = Config(
+        projects=[ProjectCfg(name="other")],
+        environments=[EnvironmentCfg(name="testing", ssh_config_path=mine, short="test", project="other")],
+    )
+
+    result = plan_import(bundle, config=here, paths=theirs)
+    envs = [(e["project"], e["name"], e.get("id")) for e in result.config_after["environments"]]
+    assert envs == [("other", "testing", None), ("lab", "testing", "lab-testing")]
+    assert result.config_after["tunnels"]["kibana"]["env"] == "lab-testing"
+    assert {(c.kind, c.name, c.action) for c in result.changes} >= {("environment", "lab/testing", "add"), ("project", "lab", "add")}
+
+    # Imported again once applied, it is the same environment, not a third one.
+    apply_import(result, theirs)
+    again = plan_import(bundle, config=config_loader.load(theirs.config_file), paths=theirs)
+    assert again.changed is False
+
+
 def test_replace_mode_unregisters_what_the_bundle_does_not_carry_but_deletes_no_file(context, tmp_path: Path):
     from sshfleet.config import EnvironmentCfg
 
@@ -174,7 +210,7 @@ def test_replace_mode_unregisters_what_the_bundle_does_not_carry_but_deletes_no_
     context.config.environments.append(EnvironmentCfg(name="other", ssh_config_path=other, short="oth", project="lab"))
     result = plan(context, bundle, mode="replace")
     assert [e["name"] for e in result.config_after["environments"]] == ["testing"]
-    assert any(c.name == "other" and c.action == "remove" for c in result.changes)
+    assert any(c.name == "lab/other" and c.action == "remove" for c in result.changes)
     apply_import(result, context.paths)
     assert other.exists()
 

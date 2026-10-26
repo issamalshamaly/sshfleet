@@ -93,6 +93,29 @@ def default_env_file(project: str, short: str) -> Path:
     return ssh_dir() / "config.d" / env_stem(project, short)
 
 
+def environment_in(config: Config, project: str, name: str) -> EnvironmentCfg | None:
+    """The environment called ``name`` in ``project``: a name is unique there and nowhere else."""
+    return next((e for e in config.environments if e.project == project and e.name == name), None)
+
+
+def new_env_id(config: Config, project: str, name: str) -> str:
+    """The id a new environment is given: its own name while no other environment has that as
+    its id, else ``<project>-<name>`` — so the second project with a ``staging`` gets
+    ``mudeer-staging`` — numbered on the rare chance that is taken too."""
+    return free_env_id({e.id for e in config.environments}, project, name)
+
+
+def free_env_id(taken: set[str], project: str, name: str) -> str:
+    """:func:`new_env_id` against a set of ids already in use."""
+    if name not in taken:
+        return name
+    base = f"{slug(project)}-{slug(name)}"
+    candidate, n = base, 2
+    while candidate in taken:
+        candidate, n = f"{base}-{n}", n + 1
+    return candidate
+
+
 def host_prefix(env: EnvironmentCfg) -> str:
     return env_stem(env.project, env.short) + "_"
 
@@ -241,10 +264,12 @@ def add_environment(
 ) -> EnvironmentCfg:
     """Add (or replace) an environment in the config object. Does not save.
 
-    The project must already exist: an environment always belongs to one.
+    The project must already exist: an environment always belongs to one. Its name must be new
+    to that project only; another project may well have a ``staging`` too.
 
     With ``create_file`` a path that does not exist yet is created empty, so hosts can be added
-    afterwards; without it the file must exist, though it may still be empty.
+    afterwards; without it the file must exist, though it may still be empty. Nothing is created
+    until everything else has been checked, so a refused registration leaves no file behind.
     """
     clean_project = (project or "").strip()
     if not clean_project:
@@ -255,15 +280,16 @@ def add_environment(
         known = ", ".join(p.name for p in config.projects) or "none yet"
         raise ConfigError(f"unknown project {clean_project!r} (known: {known})")
 
+    existing = environment_in(config, clean_project, name)
+    if existing and not replace:
+        raise ConfigError(f"project {clean_project!r} already has an environment called {name!r} (use --replace to overwrite)")
+
     path = ssh_config_path.expanduser()
     if not path.exists():
         if not create_file:
             raise FileNotFoundError(f"cannot read ssh config {path}: no such file")
         create_env_file(path, name)
     info = preview(path, config, allow_empty=True)
-    existing = next((e for e in config.environments if e.name == name), None)
-    if existing and not replace:
-        raise ConfigError(f"environment {name!r} already exists (use --replace to overwrite)")
 
     env_cfg = EnvironmentCfg(
         name=name,
@@ -273,6 +299,8 @@ def add_environment(
         key_path=key_path.expanduser() if key_path else None,
         bastions=bastions if bastions is not None else "auto",
         project=clean_project,
+        # Replacing keeps the id, so its hosts, tunnels and history still point at it.
+        id=existing.id if existing else new_env_id(config, clean_project, name),
     )
     if existing:
         config.environments[config.environments.index(existing)] = env_cfg
@@ -281,12 +309,10 @@ def add_environment(
     return env_cfg
 
 
-def remove_environment(config: Config, name: str) -> EnvironmentCfg:
-    for env in config.environments:
-        if env.name == name or env.short == name:
-            config.environments.remove(env)
-            return env
-    raise ConfigError(f"unknown environment {name!r}")
+def remove_environment(config: Config, ref: str) -> EnvironmentCfg:
+    env = config.environment(ref)
+    config.environments.remove(env)
+    return env
 
 
 # ------------------------------------------------------------------------------------ projects

@@ -89,7 +89,7 @@ function Highlighted({ text, regex }: { text: string; regex: RegExp | null }) {
 /** `fresh` comes from the route: true when a Logs icon elsewhere in the app opened this page,
  *  which starts a new search instead of resuming the last one. See lib/navigation. */
 export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
-  const { env: globalEnv, envNames, setEnv: setGlobalEnv } = useEnv();
+  const { env: globalEnv, envIds, setEnv: setGlobalEnv } = useEnv();
   const config = useConfig();
   const [params] = useSearchParams();
   // Taken once, on the way in: the page either resumes what it was left with or starts from
@@ -97,20 +97,20 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
   const store = useLogsStore();
   const [initial] = useState<LogsSnapshot>(() => (fresh ? seedFromParams(params) : store.get()));
   // A search spans one environment, and only the ones inside the project being looked at.
-  const environments = (config.data?.environments ?? []).filter((e) => envNames.includes(e.name));
+  const environments = (config.data?.environments ?? []).filter((e) => envIds.includes(e.id));
 
   // ------------------------------------------------------------- selection
   // The sidebar is the one environment control in the app. A link that names an environment —
   // the fleet's "logs" button does — moves the sidebar to it rather than disagreeing with it.
   const linked = params.get("env");
   useEffect(() => {
-    if (linked && linked !== globalEnv && envNames.includes(linked)) setGlobalEnv(linked);
-  }, [linked, globalEnv, envNames, setGlobalEnv]);
+    if (linked && linked !== globalEnv && envIds.includes(linked)) setGlobalEnv(linked);
+  }, [linked, globalEnv, envIds, setGlobalEnv]);
 
   // A search reads one environment at a time, so when the sidebar is on all of them this page
   // still has to pick which. That is the only case where it asks.
   const [pick, setPick] = useState<string | null>(initial.pick);
-  const env = globalEnv ?? (pick && envNames.includes(pick) ? pick : (environments[0]?.name ?? null));
+  const env = globalEnv ?? (pick && envIds.includes(pick) ? pick : (environments[0]?.id ?? null));
   const resetSelection = () => {
     setPicked(new Set());
     setExcluded(new Set());
@@ -413,8 +413,8 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
                 <Text size="xs" c="dimmed">
                   Environment
                 </Text>
-                <Badge size="sm" variant="light" color={envColor(environments.find((e) => e.name === globalEnv)?.color ?? "gray")}>
-                  {globalEnv}
+                <Badge size="sm" variant="light" color={envColor(environments.find((e) => e.id === globalEnv)?.color ?? "gray")}>
+                  {environments.find((e) => e.id === globalEnv)?.name ?? globalEnv}
                 </Badge>
                 <Text size="xs" c="dimmed">
                   · chosen {phone ? "at the top" : "in the sidebar"}
@@ -425,7 +425,7 @@ export default function LogsPage({ fresh = false }: { fresh?: boolean }) {
                 size="sm"
                 label="Environment"
                 description="A search reads one at a time"
-                data={environments.map((e) => ({ value: e.name, label: e.name }))}
+                data={environments.map((e) => ({ value: e.id, label: e.name }))}
                 value={env}
                 onChange={(v) => {
                   setPick(v);

@@ -143,19 +143,19 @@ export function ProjectPicker({ onPick }: { onPick?: () => void }) {
 export function EnvironmentList({ onPick }: { onPick?: () => void }) {
   const config = useConfig();
   const fleet = useFleet();
-  const { env, setEnv, project, envNames } = useEnv();
+  const { env, setEnv, project, envIds } = useEnv();
   const currentProject = (config.data?.projects ?? []).find((p) => p.name === project) ?? null;
   const projectEnvironments = useMemo(
     () => (config.data?.environments ?? []).filter((e) => e.project === project),
     [config.data, project],
   );
-  const pick = (name: string | null) => {
-    setEnv(name);
+  const pick = (id: string | null) => {
+    setEnv(id);
     onPick?.();
   };
 
   const renderEnvironmentLink = (environment: Environment) => {
-    const all = fleet.data?.hosts.filter((h) => h.env === environment.name) ?? [];
+    const all = fleet.data?.hosts.filter((h) => h.env === environment.id) ?? [];
     // "down" is measured over the hosts being watched; a paused one is neither up nor down.
     const hosts = all.filter((h) => !h.paused_by);
     const down = hosts.filter((h) => h.snapshot && !h.snapshot.reachable).length;
@@ -164,7 +164,7 @@ export function EnvironmentList({ onPick }: { onPick?: () => void }) {
     const paused = environment.paused || !!currentProject?.paused;
     return (
       <NavLink
-        key={environment.name}
+        key={environment.id}
         label={
           <Group gap={8} wrap="nowrap">
             <Box w={8} h={8} style={{ borderRadius: 4, background: `var(--mantine-color-${envColor(environment.color)}-6)` }} />
@@ -195,8 +195,8 @@ export function EnvironmentList({ onPick }: { onPick?: () => void }) {
             </Text>
           )
         }
-        active={env === environment.name}
-        onClick={() => pick(environment.name)}
+        active={env === environment.id}
+        onClick={() => pick(environment.id)}
         variant="light"
       />
     );
@@ -216,7 +216,7 @@ export function EnvironmentList({ onPick }: { onPick?: () => void }) {
           leftSection={<IconActivity size={16} />}
           rightSection={
             <Text size="xs" c="dimmed">
-              {fleet.data ? fleet.data.hosts.filter((h) => envNames.includes(h.env)).length : "…"}
+              {fleet.data ? fleet.data.hosts.filter((h) => envIds.includes(h.env)).length : "…"}
             </Text>
           }
           variant="light"

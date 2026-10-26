@@ -250,7 +250,7 @@ class FleetService:
         """Restore the cached snapshots (marked stale by their age, not by a flag)."""
         loaded = 0
         for environment in self.context.inventory.environments:
-            path = self._state_file(environment.name)
+            path = self._state_file(environment.id)
             if not path.exists():
                 continue
             try:

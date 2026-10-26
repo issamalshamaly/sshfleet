@@ -173,7 +173,7 @@ def search(
 
     try:
         sources = _resolve_sources(
-            context, environment.name,
+            context, environment.id,
             main=main, hosts=host, containers=container, files=file, include_files=include_files,
         )
     except KeyError as exc:
@@ -207,12 +207,12 @@ def search(
     styles = _styles(sources)
     bundle: Bundle | None = None
     if download or download_to:
-        directory = download_to or bundle_dir(context.download_dir, environment.name, pattern or "all")
-        bundle = Bundle(directory=directory, request=request, env=environment.name)
+        directory = download_to or bundle_dir(context.download_dir, environment.id, pattern or "all")
+        bundle = Bundle(directory=directory, request=request, env=environment.id)
 
     summary: SearchDone | None = None
     context.audit.append(
-        "logs.search", env=environment.name, target=(pattern or "")[:200] or None, status="started",
+        "logs.search", env=environment.id, target=(pattern or "")[:200] or None, status="started",
         note="cli; " + describe_sources(sources) + ("; saved as a bundle" if bundle else ""),
     )
     coordinator = SearchCoordinator(context.runner, context.inventory, context.config)
@@ -260,7 +260,7 @@ def search(
     if bundle:
         directory = bundle.close(summary)
         context.audit.append(
-            "logs.download", env=environment.name, target=str(directory), status="ok",
+            "logs.download", env=environment.id, target=str(directory), status="ok",
             note=f"{summary.matches} matches from {len(sources)} sources",
         )
 
@@ -325,8 +325,8 @@ def sources_cmd(
     context = build_context()
     environment = context.config.environment(env)
     sources = _resolve_sources(
-        context, environment.name,
-        main=True, hosts=None if main else [h.alias for h in context.inventory.hosts(environment.name)],
+        context, environment.id,
+        main=True, hosts=None if main else [h.alias for h in context.inventory.hosts(environment.id)],
         containers=None, files=None, include_files=not main,
     )
     if as_json:
@@ -360,7 +360,7 @@ def tail_cmd(
     if not any([main, host, container]):
         main = True
     sources = _resolve_sources(
-        context, environment.name, main=main, hosts=host, containers=container, files=None, include_files=False,
+        context, environment.id, main=main, hosts=host, containers=container, files=None, include_files=False,
     )
     if not sources:
         fail("no log sources matched")
@@ -374,7 +374,7 @@ def tail_cmd(
     zone = tz_module.zone_for(tz or context.config.logs.display_tz)
     styles = _styles(sources)
     context.audit.append(
-        "logs.follow", env=environment.name, target=(pattern or "")[:200] or None, status="started",
+        "logs.follow", env=environment.id, target=(pattern or "")[:200] or None, status="started",
         note="cli; " + describe_sources(sources),
     )
 

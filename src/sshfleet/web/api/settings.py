@@ -62,7 +62,7 @@ def _key_payload(path: Path | None) -> dict[str, Any] | None:
 
 def _project_payload(state: WebState, project: ProjectCfg) -> dict[str, Any]:
     config = state.context.config
-    members = [e.name for e in config.environments if e.project == project.name]
+    members = [e.id for e in config.environments if e.project == project.name]
     return {
         "name": project.name,
         "color": project.color,
@@ -76,12 +76,13 @@ def _project_payload(state: WebState, project: ProjectCfg) -> dict[str, Any]:
 def _environment_payload(state: WebState, env_cfg: EnvironmentCfg) -> dict[str, Any]:
     inventory = state.context.inventory
     try:
-        environment = inventory.environment(env_cfg.name)
+        environment = inventory.environment(env_cfg.id)
         hosts, bastions, prefix = environment.hosts, environment.bastions, environment.alias_prefix
     except KeyError:
         hosts, bastions, prefix = [], [], None
     path = env_cfg.ssh_config_path
     return {
+        "id": env_cfg.id,
         "name": env_cfg.name,
         "short": env_cfg.short,
         "color": env_cfg.color,
@@ -182,7 +183,8 @@ async def hosts(request: Request, env: str | None = None):
 async def ssh_configs(request: Request):
     """SSH config files worth registering, with the host count each one would contribute."""
     state = _state(request)
-    registered = {str(e.ssh_config_path): e.name for e in state.context.config.environments}
+    # Shown beside each file, where two projects may each have a staging.
+    registered = {str(e.ssh_config_path): f"{e.project}/{e.name}" for e in state.context.config.environments}
     candidates: list[Path] = []
     ssh_dir = Path.home() / ".ssh"
     for path in [ssh_dir / "config", *sorted((ssh_dir / "config.d").glob("*"))]:
@@ -381,11 +383,13 @@ def _env_path(state: WebState, raw: str | None, name: str | None, short: str | N
         return Path(text).expanduser()
     if not name or not name.strip():
         raise HTTPException(400, "give the environment a name, or point at an existing ssh config file")
-    path = envsetup.default_env_file(_known_project(state, project), _short_label(name, short))
+    clean_project = _known_project(state, project)
+    path = envsetup.default_env_file(clean_project, _short_label(name, short))
     # Two environments of one project with the same short label would land in one file and
-    # each would show the other's hosts.
+    # each would show the other's hosts. The environment itself (being replaced) does not count.
+    itself = envsetup.environment_in(state.context.config, clean_project, name.strip())
     owner = next(
-        (e.name for e in state.context.config.environments if e.ssh_config_path.expanduser() == path and e.name != name.strip()),
+        (e.name for e in state.context.config.environments if e.ssh_config_path.expanduser() == path and e is not itself),
         None,
     )
     if owner:
@@ -431,7 +435,7 @@ async def add_environment(request: Request, body: EnvironmentBody):
     # A file sshfleet names after the short label records that same label, so the two agree.
     auto_file = not (body.ssh_config_path or "").strip()
     try:
-        envsetup.add_environment(
+        env_cfg = envsetup.add_environment(
             state.context.config,
             name=body.name.strip(),
             ssh_config_path=path,
@@ -450,13 +454,13 @@ async def add_environment(request: Request, body: EnvironmentBody):
         raise HTTPException(400, f"cannot create {path}: {exc.strerror or exc}") from exc
 
     _save(state)
-    summary = await state.reload(reason=f"environment {body.name} registered")
+    summary = await state.reload(reason=f"environment {env_cfg.project}/{env_cfg.name} registered")
     state.context.audit.append(
-        "settings.env.add", env=body.name, target=str(path), status="ok", note="file created" if created else None
+        "settings.env.add", env=env_cfg.id, target=str(path), status="ok", note="file created" if created else None
     )
     return {
         "ok": True,
-        "environment": body.name,
+        "environment": env_cfg.id,
         "created_file": str(path) if created else None,
         "reload": summary,
         "key": _key_payload(Path(body.key_path).expanduser() if body.key_path else None),
@@ -464,14 +468,20 @@ async def add_environment(request: Request, body: EnvironmentBody):
     }
 
 
-@router.patch("/environments/{name}")
-async def update_environment(request: Request, name: str, body: EnvironmentPatch):
+@router.patch("/environments/{env_id}")
+async def update_environment(request: Request, env_id: str, body: EnvironmentPatch):
     state = _state(request)
     config = state.context.config
     try:
-        env_cfg = config.environment(name)
+        env_cfg = config.environment(env_id)
     except ConfigError as exc:
         raise HTTPException(404, str(exc)) from exc
+    # A name is unique inside its project, so a move into one that has the name already is refused
+    # before anything is changed.
+    if body.project is not None and body.project.strip() != env_cfg.project:
+        target = _known_project(state, body.project)
+        if envsetup.environment_in(config, target, env_cfg.name):
+            raise HTTPException(400, f"project {target!r} already has an environment called {env_cfg.name!r}")
 
     if body.ssh_config_path is not None:
         path = _env_path(
@@ -506,37 +516,37 @@ async def update_environment(request: Request, name: str, body: EnvironmentPatch
         env_cfg.paused = bool(body.paused)
 
     _save(state)
-    summary = await state.reload(reason=f"environment {env_cfg.name} changed")
+    summary = await state.reload(reason=f"environment {env_cfg.project}/{env_cfg.name} changed")
     state.context.audit.append(
         "settings.env.update",
-        env=env_cfg.name,
+        env=env_cfg.id,
         status="ok",
         note=("paused" if env_cfg.paused else "resumed") if pausing else None,
     )
     return {"ok": True, "environment": _environment_payload(state, env_cfg), "reload": summary}
 
 
-@router.delete("/environments/{name}")
-async def remove_environment(request: Request, name: str):
+@router.delete("/environments/{env_id}")
+async def remove_environment(request: Request, env_id: str):
     """Forget an environment. The SSH config file it pointed at is never touched."""
     state = _state(request)
     try:
-        envsetup.remove_environment(state.context.config, name)
+        removed = envsetup.remove_environment(state.context.config, env_id)
     except ConfigError as exc:
         raise HTTPException(404, str(exc)) from exc
     _save(state)
-    summary = await state.reload(reason=f"environment {name} removed")
-    state.context.audit.append("settings.env.remove", env=name, status="ok")
+    summary = await state.reload(reason=f"environment {removed.project}/{removed.name} removed")
+    state.context.audit.append("settings.env.remove", env=removed.id, status="ok")
     return {"ok": True, "reload": summary}
 
 
-@router.post("/environments/{name}/test")
-async def test_environment(request: Request, name: str):
+@router.post("/environments/{env_id}/test")
+async def test_environment(request: Request, env_id: str):
     """Open the bastion connections and one host behind them, and report what happened."""
     state = _state(request)
     context = state.context
     try:
-        environment = context.inventory.environment(name)
+        environment = context.inventory.environment(env_id)
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
 
@@ -544,7 +554,7 @@ async def test_environment(request: Request, name: str):
         return {"ok": True, "bastions": {}, "elapsed": 0, "note": "nothing to test yet — add a host to this environment first"}
 
     started = time.time()
-    results = await context.mux.warm_bastions(environment.name)
+    results = await context.mux.warm_bastions(environment.id)
     payload: dict[str, Any] = {
         "bastions": {
             alias: {"ok": r.ok, "error": r.message, "seconds": round(r.elapsed, 2)} for alias, r in results.items()
@@ -765,7 +775,7 @@ async def add_host(request: Request, body: HostBody):
         raise HTTPException(400, "the host needs a name")
     # Aliases share one namespace across every project; the prefix keeps them apart.
     alias = envsetup.host_alias(env_cfg, body.alias)
-    _check_parent(state, alias, body.proxy_jump, env_cfg.name)
+    _check_parent(state, alias, body.proxy_jump, env_cfg.id)
 
     backups = state.context.paths.ssh_backups
     try:
@@ -784,7 +794,7 @@ async def add_host(request: Request, body: HostBody):
     summary = await state.reload(reason=f"host {alias} added")
     state.context.audit.append(
         "settings.host.add",
-        env=env_cfg.name,
+        env=env_cfg.id,
         host=alias,
         target=str(env_cfg.ssh_config_path),
         note=f"backup {backup.name}" if backup else "file created",
@@ -931,11 +941,12 @@ class TunnelPatch(BaseModel):
     _web = field_validator("open_url")(_web_address)
 
 
-def _check_tunnel(state: WebState, name: str, env: str, via: str, local: int) -> None:
+def _check_tunnel(state: WebState, name: str, env: str, via: str, local: int) -> str:
+    """Refuse a tunnel that cannot work; return the id of the environment it belongs to."""
     if not sshedit.ALIAS_RE.match(name):
         raise HTTPException(400, f"{name!r} is not a usable tunnel name")
     try:
-        state.context.config.environment(env)
+        env = state.context.config.environment(env).id
     except ConfigError as exc:
         raise HTTPException(400, str(exc)) from exc
     try:
@@ -947,6 +958,7 @@ def _check_tunnel(state: WebState, name: str, env: str, via: str, local: int) ->
     clash = next((t for t in state.context.config.tunnels.values() if t.local == local and t.name != name), None)
     if clash:
         raise HTTPException(400, f"local port {local} is already used by the {clash.name} tunnel")
+    return env
 
 
 @router.post("/tunnels")
@@ -957,11 +969,11 @@ async def add_tunnel(request: Request, body: TunnelBody):
         raise HTTPException(400, f"a tunnel called {body.name!r} already exists")
     if not sshedit.ADDRESS_RE.match(body.remote_host):
         raise HTTPException(400, f"{body.remote_host!r} is not a valid address on the far side")
-    _check_tunnel(state, body.name, body.env, body.via, body.local)
+    env = _check_tunnel(state, body.name, body.env, body.via, body.local)
 
     state.context.config.tunnels[body.name] = TunnelCfg(
         name=body.name,
-        env=body.env,
+        env=env,
         via=body.via,
         remote=f"{body.remote_host}:{body.remote_port}",
         local=body.local,
@@ -969,7 +981,7 @@ async def add_tunnel(request: Request, body: TunnelBody):
     )
     _save(state)
     await state.reload(reason=f"tunnel {body.name} added")
-    state.context.audit.append("settings.tunnel.add", env=body.env, host=body.via, target=body.name, status="ok")
+    state.context.audit.append("settings.tunnel.add", env=env, host=body.via, target=body.name, status="ok")
     return {"ok": True, "tunnel": body.name}
 
 
@@ -989,7 +1001,7 @@ async def update_tunnel(request: Request, name: str, body: TunnelPatch):
     remote_port = body.remote_port or existing.remote_port
     if not sshedit.ADDRESS_RE.match(remote_host):
         raise HTTPException(400, f"{remote_host!r} is not a valid address on the far side")
-    _check_tunnel(state, name, env, via, local)
+    env = _check_tunnel(state, name, env, via, local)
 
     state.context.config.tunnels[name] = TunnelCfg(
         name=name,

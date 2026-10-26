@@ -45,7 +45,7 @@ import yaml
 
 from . import __version__
 from .config import loader as config_loader
-from .config.schema import CONFIG_VERSION, Config, ConfigError
+from .config.schema import CONFIG_VERSION, Config, ConfigError, matching_environments
 from .fsutil import atomic_write, real_path
 from .inventory import Inventory
 from .inventory.sshconfig import holds_key_material, looks_like_key
@@ -199,16 +199,15 @@ def build(
     """The bundle for this setup (or the part of it chosen), and what is worth telling about it."""
     warnings: list[str] = []
     data = config_loader.to_dict(config)
-    # Environments are named exactly (the CLI also takes a short label); projects narrow them.
+    # Environments are named by id, or as the CLI takes them (name, short label, project/name);
+    # projects narrow them.
+    chosen = {e.id for ref in environments or [] for e in matching_environments(config.environments, ref)}
     wanted_envs = [
-        e
-        for e in config.environments
-        if (not environments or e.name in environments or (e.short in environments and not any(o.name == e.short for o in config.environments)))
-        and (not projects or e.project in projects)
+        e for e in config.environments if (not environments or e.id in chosen) and (not projects or e.project in projects)
     ]
     if (projects or environments) and not wanted_envs:
         raise BundleError("no environment matches what was asked to export")
-    env_names = {e.name for e in wanted_envs}
+    env_ids = {e.id for e in wanted_envs}
     scoped = bool(projects or environments)
 
     local: dict[str, Any] = {"environments": {}, "projects": {}, "hosts": {}}
@@ -216,7 +215,7 @@ def build(
     origins: dict[str, Path] = {}
     fleet_envs: list[dict[str, Any]] = []
     for env_cfg, env_dict in zip(config.environments, data.get("environments") or [], strict=True):
-        if env_cfg.name not in env_names:
+        if env_cfg.id not in env_ids:
             continue
         path = env_cfg.ssh_config_path.expanduser()
         name = path.name
@@ -248,7 +247,7 @@ def build(
         shared = {k: v for k, v in env_dict.items() if k not in {"key_path", "ssh_config_path", "paused"}}
         shared["ssh_file"] = name
         fleet_envs.append(shared)
-        local["environments"][env_cfg.name] = {
+        local["environments"][env_cfg.id] = {
             "ssh_config_path": str(env_cfg.ssh_config_path),
             **({"key_path": str(env_cfg.key_path)} if env_cfg.key_path else {}),
             **({"paused": True} if env_cfg.paused else {}),
@@ -268,9 +267,9 @@ def build(
     data["projects"] = fleet_projects
 
     if scoped:
-        aliases = {h.alias for h in inventory.hosts() if h.env in env_names}
+        aliases = {h.alias for h in inventory.hosts() if h.env in env_ids}
         data["hosts"] = {alias: entry for alias, entry in (data.get("hosts") or {}).items() if alias in aliases}
-        data["tunnels"] = {name: t for name, t in (data.get("tunnels") or {}).items() if t.get("env") in env_names}
+        data["tunnels"] = {name: t for name, t in (data.get("tunnels") or {}).items() if t.get("env") in env_ids}
     for alias, entry in (data.get("hosts") or {}).items():
         if entry.pop("paused", False):
             local["hosts"][alias] = {"paused": True}
@@ -295,7 +294,7 @@ def build(
             "config_version": CONFIG_VERSION,
             "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "created_on": socket.gethostname().split(".")[0],
-            "scope": {"projects": sorted(wanted_projects) if scoped else [], "environments": sorted(env_names) if scoped else []},
+            "scope": {"projects": sorted(wanted_projects) if scoped else [], "environments": sorted(env_ids) if scoped else []},
             "with_local": with_local,
         },
         "fleet": fleet,
@@ -502,6 +501,11 @@ class ImportPlan:
         }
 
 
+def _env_id(env: dict[str, Any]) -> str:
+    """An environment's id as a config mapping holds it: written only when it is not the name."""
+    return str(env.get("id") or env["name"])
+
+
 def _sha(path: Path) -> str | None:
     try:
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -659,41 +663,53 @@ def plan_import(
             mine_projects[name] = merged
             merger.note("project", name, action, differing)
 
-    mine_envs = {e["name"]: e for e in after["environments"]}
-    labels_here = {str(e.get("short") or e["name"][:4]) for e in after["environments"]} | set(mine_envs)
+    # An environment is the same one on both machines when its project and name are: its id may
+    # differ, since an id is given in the order environments were registered there.
+    mine_envs = {(str(e.get("project") or ""), e["name"]): e for e in after["environments"]}
+    shorts_here = {(str(e.get("project") or ""), str(e.get("short") or e["name"][:4])) for e in after["environments"]}
+    ids_here = {_env_id(e) for e in after["environments"]}
+    #: The bundle's id for each environment it carries → the id that environment has here.
+    local_ids: dict[str, str] = {}
+    carried: set[tuple[str, str]] = set()
     incoming_envs = fleet.get("environments") or []
     for theirs in incoming_envs:
         name = theirs["name"]
         text = texts[theirs["ssh_file"]]
-        shared = {k: v for k, v in theirs.items() if k not in {"ssh_file", "ssh_config_path", "key_path", "paused"}}
-        if name in mine_envs:
-            mine = mine_envs[name]
-            merged, action, differing = merger.entry(mine, shared, f"environments.{name}")
+        shared = {k: v for k, v in theirs.items() if k not in {"ssh_file", "ssh_config_path", "key_path", "paused", "id"}}
+        project = str(shared.get("project") or (after["projects"][0]["name"] if after["projects"] else "default"))
+        label = f"{project}/{name}"
+        carried.add((project, name))
+        if (project, name) in mine_envs:
+            mine = mine_envs[(project, name)]
+            local_ids[_env_id(theirs)] = _env_id(mine)
+            merged, action, differing = merger.entry(mine, shared, f"environments.{label}")
             after["environments"][after["environments"].index(mine)] = merged
-            merger.note("environment", name, action, differing)
+            mine_envs[(project, name)] = merged
+            merger.note("environment", label, action, differing)
             path = Path(str(mine["ssh_config_path"])).expanduser()
             if looks_like_key(path):
-                raise BundleError(f"environment {name}: {path} looks like a key; it is not written to")
+                raise BundleError(f"environment {label}: {path} looks like a key; it is not written to")
             local_text = path.read_text() if path.exists() else ""
             new_text, stanza_changes = merge_text(local_text, text, mode=mode, prefer=prefer)
             for change in stanza_changes:
                 if change.action != "same":
-                    merger.note("stanza", f"{name}: Host {change.label}", change.action, note=change.note)
+                    merger.note("stanza", f"{label}: Host {change.label}", change.action, note=change.note)
             if new_text != local_text:
                 files_after[str(path)] = new_text
             continue
 
+        # A short label names the environment's file, <project>_<short>, so it must be new to
+        # the project; another project may use it.
         short = str(shared.get("short") or name[:4])
-        if short in labels_here or name in labels_here:
-            merger.note("environment", name, "conflict", note=f"its name or short label {short!r} is already used by an environment here")
+        if (project, short) in shorts_here:
+            merger.note("environment", label, "conflict", note=f"its short label {short!r} is already used by another environment of {project} here")
             skipped_aliases.update(aliases_in(text))
             continue
-        project = str(shared.get("project") or (after["projects"][0]["name"] if after["projects"] else "default"))
         if project not in mine_projects:
             mine_projects[project] = {"name": project, "color": "gray"}
             after["projects"].append(mine_projects[project])
             merger.note("project", project, "add", note=f"for environment {name}")
-        local_env = (local_part.get("environments") or {}).get(name, {})
+        local_env = (local_part.get("environments") or {}).get(_env_id(theirs), {})
         target = envsetup.default_env_file(project, short)
         wanted = local_env.get("ssh_config_path")
         if wanted:
@@ -702,35 +718,46 @@ def plan_import(
                 target = candidate
             else:
                 warnings.append(f"{name}: the bundle's file path {wanted} is outside {home_ssh}; using {target} instead")
+        # Two environments on one file would each show the other's hosts.
+        holder = next((e for e in after["environments"] if Path(str(e["ssh_config_path"])).expanduser() == target), None)
+        if holder is not None:
+            merger.note("environment", label, "conflict", note=f"{target} already belongs to {holder.get('project')}/{holder['name']} here")
+            skipped_aliases.update(aliases_in(text))
+            continue
         if target.exists():
             if target.read_text() != text:
-                merger.note("environment", name, "conflict", note=f"a different file is already at {target}")
+                merger.note("environment", label, "conflict", note=f"a different file is already at {target}")
                 skipped_aliases.update(aliases_in(text))
                 continue
         else:
             files_after[str(target)] = text
-        entry = {**merger.resolve(shared, _MISSING, f"environments.{name}"), "ssh_config_path": str(target)}
+        entry = {**merger.resolve(shared, _MISSING, f"environments.{label}"), "ssh_config_path": str(target)}
         entry["project"] = project
+        # The bundle's id while it is free here, so both machines agree where they can.
+        new_id = _env_id(theirs) if _env_id(theirs) not in ids_here else envsetup.free_env_id(ids_here, project, name)
+        if new_id != name:
+            entry["id"] = new_id
         if local_env.get("key_path"):
             entry["key_path"] = str(local_env["key_path"])
             key = envsetup.check_key(Path(entry["key_path"]))
             if not key.ok:
-                warnings.append(f"{name}: key {key.path}: {'; '.join(key.problems)}")
+                warnings.append(f"{label}: key {key.path}: {'; '.join(key.problems)}")
         else:
-            needs_key.append(name)
+            needs_key.append(label)
         if local_env.get("paused"):
             entry["paused"] = True
         after["environments"].append(entry)
-        mine_envs[name] = entry
-        labels_here |= {short, name}
-        merger.note("environment", name, "add", note=f"its hosts go to {target}")
+        mine_envs[(project, name)] = entry
+        shorts_here.add((project, short))
+        ids_here.add(new_id)
+        local_ids[_env_id(theirs)] = new_id
+        merger.note("environment", label, "add", note=f"its hosts go to {target}")
 
     if mode == "replace":
-        carried = {e["name"] for e in incoming_envs}
         for env in list(after["environments"]):
-            if env["name"] not in carried:
+            if (str(env.get("project") or ""), env["name"]) not in carried:
                 after["environments"].remove(env)
-                merger.note("environment", env["name"], "remove", note=f"unregistered; {env['ssh_config_path']} stays where it is")
+                merger.note("environment", f"{env.get('project')}/{env['name']}", "remove", note=f"unregistered; {env['ssh_config_path']} stays where it is")
 
     # Host settings, by alias. Pauses are this operator's, whatever either side says.
     mine_hosts: dict[str, Any] = after.setdefault("hosts", {})
@@ -766,14 +793,16 @@ def plan_import(
 
     # Tunnels, by name. A local port another tunnel already uses here is never taken over.
     mine_tunnels: dict[str, Any] = after.setdefault("tunnels", {})
-    env_names = {e["name"] for e in after["environments"]}
+    env_ids = {_env_id(e) for e in after["environments"]}
     for name, theirs in (fleet.get("tunnels") or {}).items():
         if not isinstance(theirs, dict):
             continue
-        if theirs.get("env") not in env_names:
+        # A tunnel names its environment by the bundle's id; here it may have another.
+        env = local_ids.get(str(theirs.get("env")), theirs.get("env"))
+        if env not in env_ids:
             merger.note("tunnel", name, "skipped", note=f"its environment {theirs.get('env')!r} is not here")
             continue
-        theirs = dict(theirs)
+        theirs = {**theirs, "env": env}
         if theirs.get("open") and not re.match(r"^https?://", str(theirs["open"])):
             warnings.append(f"tunnel {name}: its link {theirs['open']!r} is not http(s) and was left out")
             theirs.pop("open")
@@ -831,12 +860,15 @@ def plan_import(
             after.setdefault("logs", {})["display_tz"] = display_tz
         if isinstance(local_part.get("ui"), dict):
             after["ui"] = local_part["ui"]
-        existing = {e["name"] for e in current.get("environments") or []}
-        for name, entry in (local_part.get("environments") or {}).items():
+        existing = {_env_id(e) for e in current.get("environments") or []}
+        by_id = {_env_id(e): e for e in after["environments"]}
+        for their_id, entry in (local_part.get("environments") or {}).items():
             # An environment that was already here and had no key takes the bundle's key path.
-            if name in existing and name in mine_envs and entry.get("key_path") and not mine_envs[name].get("key_path"):
-                mine_envs[name]["key_path"] = str(entry["key_path"])
-                merger.note("environment", name, "update", note="its key path from the bundle")
+            env_id = local_ids.get(their_id)
+            mine = by_id.get(env_id) if env_id in existing else None
+            if mine is not None and entry.get("key_path") and not mine.get("key_path"):
+                mine["key_path"] = str(entry["key_path"])
+                merger.note("environment", f"{mine.get('project')}/{mine['name']}", "update", note="its key path from the bundle")
 
     after["version"] = CONFIG_VERSION
     try:

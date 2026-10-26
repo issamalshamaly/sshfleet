@@ -40,7 +40,7 @@ def _host_from_stanza(
 
     return Host(
         alias=alias,
-        env=env_cfg.name,
+        env=env_cfg.id,
         hostname=stanza.hostname,
         user=stanza.user,
         port=stanza.port,
@@ -81,6 +81,7 @@ def build_environment(env_cfg: EnvironmentCfg, config: Config) -> Environment:
 
     return Environment(
         name=env_cfg.name,
+        id=env_cfg.id,
         short=env_cfg.short or env_cfg.name[:4],
         color=env_cfg.color,
         project=env_cfg.project,
@@ -107,6 +108,7 @@ def build_inventory(config: Config) -> Inventory:
             inventory.warnings.append(f"environment {env_cfg.name}: {exc}")
             environment = Environment(
                 name=env_cfg.name,
+                id=env_cfg.id,
                 short=env_cfg.short or env_cfg.name[:4],
                 color=env_cfg.color,
                 project=env_cfg.project,

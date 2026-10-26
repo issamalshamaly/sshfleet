@@ -4,6 +4,27 @@ sshfleet follows [Semantic Versioning](https://semver.org). Before 1.0 a minor r
 the configuration file's format; when it does, the file is upgraded on first start and the old
 one is kept beside it.
 
+## Unreleased
+
+### Changed
+
+* An environment's name is unique inside its project only, so two projects can each have a
+  `staging`. Each environment has an `id`, unique across projects, that its hosts, tunnels, the
+  audit trail, links and `--env` refer to it by. It is the name unless that was already taken,
+  and then `<project>-<name>`. Existing files keep the name as the id and are not rewritten.
+  On the command line, `project/name` picks one out; a name two projects share is refused as
+  ambiguous.
+* An import matches environments by project and name, and gives a new one a free id here.
+  Tunnels follow it.
+
+### Fixed
+
+* A registration that was refused, a duplicate name for instance, left the new, empty SSH config
+  file it had already created behind in `~/.ssh/config.d`. Nothing is created now until every
+  check has passed.
+* An import that took a key path from the bundle for an environment that was already here lost
+  it again.
+
 ## 0.1.0 — 2026-10-17
 
 The first public release. Nothing was published before it, so everything below is new in it;

@@ -3,6 +3,10 @@
 export type Severity = "crit" | "warn" | "info";
 
 export interface Environment {
+  /** What every host, tunnel, URL and request refers to it by. Unique across projects; the name is
+   *  unique only inside its own, so two projects can each have a "staging". */
+  id: string;
+  /** What it is called, inside its project. Shown; never used to look it up. */
   name: string;
   short: string;
   color: string;
@@ -29,10 +33,12 @@ export interface Project {
  *  way), its paused environment, or its paused project — the widest one when several are. */
 export interface PausedBy {
   kind: "host" | "environment" | "project";
+  /** A host's alias, an environment's id, or a project's name. */
   name: string;
 }
 
 export interface ProjectSettings extends Project {
+  /** Environment ids. */
   environments: string[];
   hosts: number;
 }
@@ -99,6 +105,7 @@ export interface Site {
 
 export interface Snapshot {
   alias: string;
+  /** Its environment's id. */
   env: string;
   at: number;
   reachable: boolean;
@@ -126,6 +133,7 @@ export interface Snapshot {
 
 export interface Host {
   alias: string;
+  /** Its environment's id. */
   env: string;
   label: string;
   hostname: string | null;
@@ -203,6 +211,7 @@ export interface KeyInfo {
 }
 
 export interface EnvironmentSettings {
+  id: string;
   name: string;
   short: string;
   color: string;
@@ -243,6 +252,7 @@ export interface Settings {
 
 export interface HostSettings {
   alias: string;
+  /** Its environment's id. */
   env: string;
   hostname: string | null;
   user: string | null;

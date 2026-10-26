@@ -20,7 +20,7 @@ import { EnvironmentList, NAV, NavFooter, ProjectPicker, ShellList, ViewList } f
 export function WhereButton({ onClick }: { onClick: () => void }) {
   const config = useConfig();
   const { env, project } = useEnv();
-  const environment = (config.data?.environments ?? []).find((e) => e.name === env);
+  const environment = (config.data?.environments ?? []).find((e) => e.id === env);
   const projects = config.data?.projects ?? [];
   const color = environment ? envColor(environment.color) : envColor(projects.find((p) => p.name === project)?.color ?? "gray");
   return (

@@ -130,9 +130,11 @@ def fleet(
             alert_text = Text(alert_summary(snapshot))
             if snapshot.alerts:
                 alert_text.stylize(SEVERITY_STYLE.get(snapshot.severity or Severity.INFO, ""))
+            environment = context.config.environment(snapshot.env)
             rows.append(
                 [
-                    Text(snapshot.env[:4], style=context.config.environment(snapshot.env).color),
+                    # Its name, not its id: an id such as mudeer-staging would show as "mude".
+                    Text(environment.name[:4], style=environment.color),
                     host.label,
                     _reach_cell(snapshot),
                     f"{snapshot.load[0]:.2f}" if snapshot.reachable else "—",

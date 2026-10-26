@@ -5,16 +5,18 @@ import { useConfig } from "../hooks/useFleet";
 // What the pages are looking at, in the order the fleet is organised: a project, and inside it
 // either one environment or all of them. `env: null` means every environment of the current
 // project — never every environment everywhere, because a host always sits inside a project.
-// Both are remembered per browser.
+// Both are remembered per browser. An environment is held by its id: its name is unique only
+// inside its project, so two projects can each have a "staging".
 interface EnvState {
   project: string | null;
   setProject: (project: string) => void;
+  /** The id of the environment in view, or null for all of the project's. */
   env: string | null;
   setEnv: (env: string | null) => void;
-  /** Environment names of the current project, in config order. */
-  envNames: string[];
-  /** Does a host in this environment belong to what is being looked at? */
-  inScope: (envName: string) => boolean;
+  /** Environment ids of the current project, in config order. */
+  envIds: string[];
+  /** Does a host in this environment (by id) belong to what is being looked at? */
+  inScope: (envId: string) => boolean;
 }
 
 const EnvContext = createContext<EnvState>({
@@ -22,7 +24,7 @@ const EnvContext = createContext<EnvState>({
   setProject: () => {},
   env: null,
   setEnv: () => {},
-  envNames: [],
+  envIds: [],
   inScope: () => true,
 });
 const KEY = "sshfleet.env";
@@ -62,8 +64,8 @@ export function EnvProvider({ children }: { children: ReactNode }) {
     remember(PROJECT_KEY, first);
   }, [projects, project]);
 
-  const envNames = useMemo(
-    () => (environments ?? []).filter((e) => e.project === project).map((e) => e.name),
+  const envIds = useMemo(
+    () => (environments ?? []).filter((e) => e.project === project).map((e) => e.id),
     [environments, project],
   );
 
@@ -71,11 +73,11 @@ export function EnvProvider({ children }: { children: ReactNode }) {
   // than left selected and silently filtering everything out.
   useEffect(() => {
     if (!environments?.length || !project) return;
-    if (env && !envNames.includes(env)) {
+    if (env && !envIds.includes(env)) {
       setEnvState(null);
       remember(KEY, null);
     }
-  }, [environments, project, env, envNames]);
+  }, [environments, project, env, envIds]);
 
   const setProject = useCallback((next: string) => {
     setProjectState(next);
@@ -89,25 +91,26 @@ export function EnvProvider({ children }: { children: ReactNode }) {
     remember(KEY, next);
   }, []);
 
+  const envName = environments?.find((e) => e.id === env)?.name ?? env;
   useEffect(() => {
-    document.title = env ? `sshfleet · ${env}` : project ? `sshfleet · ${project}` : "sshfleet";
-  }, [env, project]);
+    document.title = envName ? `sshfleet · ${envName}` : project ? `sshfleet · ${project}` : "sshfleet";
+  }, [envName, project]);
 
   const loaded = !!config.data;
   const inScope = useCallback(
-    (envName: string) => {
-      if (env) return envName === env;
+    (envId: string) => {
+      if (env) return envId === env;
       // Before the config arrives there is nothing to narrow by, so nothing is hidden. Once it
       // has arrived, a project with no environments shows nothing — "all of an empty project" is
       // empty, not everything.
-      return loaded ? envNames.includes(envName) : true;
+      return loaded ? envIds.includes(envId) : true;
     },
-    [env, envNames, loaded],
+    [env, envIds, loaded],
   );
 
   const value = useMemo(
-    () => ({ project, setProject, env, setEnv, envNames, inScope }),
-    [project, setProject, env, setEnv, envNames, inScope],
+    () => ({ project, setProject, env, setEnv, envIds, inScope }),
+    [project, setProject, env, setEnv, envIds, inScope],
   );
   return <EnvContext.Provider value={value}>{children}</EnvContext.Provider>;
 }

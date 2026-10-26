@@ -52,13 +52,13 @@ function TunnelState({ tunnel }: { tunnel: Tunnel }) {
 }
 
 export default function TunnelsPage() {
-  const { env, envNames, inScope } = useEnv();
+  const { env, envIds, inScope } = useEnv();
   const config = useConfig();
   // Only this project's environments: another project may reuse the same names. Memoised because
   // the modal resets its form whenever this list changes identity.
   const environments = useMemo(
-    () => (config.data?.environments ?? []).filter((e) => envNames.includes(e.name)),
-    [config.data, envNames],
+    () => (config.data?.environments ?? []).filter((e) => envIds.includes(e.id)),
+    [config.data, envIds],
   );
   const fleet = useFleet();
   const client = useQueryClient();

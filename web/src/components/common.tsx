@@ -7,8 +7,9 @@ import { pauseReason } from "../lib/pause";
 import { envColor, severityColor } from "../theme";
 import { InfoTip } from "./responsive";
 
+/** `env` is an environment's id; the badge shows its short label. */
 export function EnvBadge({ env, environments, size = "sm" }: { env: string; environments?: Environment[]; size?: string }) {
-  const meta = environments?.find((e) => e.name === env);
+  const meta = environments?.find((e) => e.id === env);
   return (
     <Badge color={envColor(meta?.color ?? "cyan")} variant="light" size={size} radius="sm" tt="uppercase" fw={700}>
       {meta?.short ?? env}

@@ -422,7 +422,7 @@ class WebState:
             "changed": changed,
             "hosts": len(after),
             "warnings": list(inventory.warnings),
-            "environments": [e.name for e in inventory.environments],
+            "environments": [e.id for e in inventory.environments],
             "at": self.last_reload,
             # The state this reload left the configuration in, and the one before it: going back
             # to `previous_state` undoes whatever caused the reload.
@@ -607,9 +607,10 @@ class WebState:
     def environments_payload(self) -> list[dict[str, Any]]:
         out = []
         for environment in self.context.inventory.environments:
-            cfg = self.context.config.environment(environment.name)
+            cfg = self.context.config.environment(environment.id)
             out.append(
                 {
+                    "id": environment.id,
                     "name": environment.name,
                     "short": environment.short,
                     "color": cfg.color,

@@ -113,15 +113,15 @@ function HostModal({
   editing,
   settings,
   hosts,
-  envNames,
+  envIds,
 }: {
   opened: boolean;
   onClose: () => void;
   editing: HostSettings | null;
   settings: Settings | undefined;
   hosts: HostSettings[];
-  /** Only the environments of the project in view: a host must not land in another one's file. */
-  envNames: string[];
+  /** Only the environments (by id) of the project in view: a host must not land in another one's file. */
+  envIds: string[];
 }) {
   const invalidate = useInvalidateSettings();
   const [form, setForm] = useState<FormState>(EMPTY);
@@ -129,7 +129,7 @@ function HostModal({
 
   useEffect(() => {
     if (!opened) return;
-    const editPrefix = settings?.environments.find((e) => e.name === editing?.env)?.host_prefix ?? "";
+    const editPrefix = settings?.environments.find((e) => e.id === editing?.env)?.host_prefix ?? "";
     setForm(
       editing
         ? {
@@ -155,13 +155,13 @@ function HostModal({
             ignored: editing.ignored_containers ?? [],
             paused: editing.paused,
           }
-        : { ...EMPTY, env: envNames[0] ?? "" },
+        : { ...EMPTY, env: envIds[0] ?? "" },
     );
-  }, [opened, editing, settings, envNames]);
+  }, [opened, editing, settings, envIds]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
 
-  const environment = settings?.environments.find((e) => e.name === form.env);
+  const environment = settings?.environments.find((e) => e.id === form.env);
   // Aliases share one namespace across projects, so a new host is always <project>_<short>_<name>.
   // A host added before that rule is edited as it is, never renamed behind the operator's back.
   const prefix = environment?.host_prefix ?? "";
@@ -260,7 +260,7 @@ function HostModal({
             <Select
               label="Environment"
               description="Where it is written"
-              data={(settings?.environments ?? []).filter((e) => envNames.includes(e.name)).map((e) => ({ value: e.name, label: e.name }))}
+              data={(settings?.environments ?? []).filter((e) => envIds.includes(e.id)).map((e) => ({ value: e.id, label: e.name }))}
               value={form.env}
               onChange={(value) => set("env", value ?? "")}
               disabled={!!editing}
@@ -338,7 +338,7 @@ function HostModal({
           label="Identity file"
           description={
             environment?.key
-              ? `Optional. Without one this host uses the ${form.env} key.`
+              ? `Optional. Without one this host uses the ${environment.name} key.`
               : "Optional. Without one this host uses your default SSH key."
           }
           placeholder="leave empty to use the environment key"
@@ -543,7 +543,7 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
   const hosts = useSettingsHosts();
   const config = useConfig();
   const invalidate = useInvalidateSettings();
-  const { env: sidebarEnv, envNames, project } = useEnv();
+  const { env: sidebarEnv, envIds, project } = useEnv();
   const [filter, setFilter] = useViewState("settings.hosts.filter", "");
   const env = sidebarEnv ?? "";
   const [modal, setModal] = useState<{ open: boolean; editing: HostSettings | null }>({ open: false, editing: null });
@@ -589,13 +589,13 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
   const all = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     return (hosts.data ?? []).filter((host) => {
-      if (env ? host.env !== env : !envNames.includes(host.env)) return false;
+      if (env ? host.env !== env : !envIds.includes(host.env)) return false;
       if (!needle) return true;
       return [host.alias, host.hostname, host.user, host.proxy_jump, host.label, host.display]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle));
     });
-  }, [hosts.data, filter, env, envNames]);
+  }, [hosts.data, filter, env, envIds]);
 
   // A fleet of any size makes this table taller than the screen many times over. A new filter
   // is a new question, answered from the top.
@@ -622,7 +622,7 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
         {/* No environment picker here: the sidebar is the one in the app, and two controls for
             the same thing disagreed with each other. The Env column says which is which. */}
         <Text size="sm" c="dimmed">
-          {all.length} hosts in {env || project || "view"}
+          {all.length} hosts in {config.data?.environments.find((e) => e.id === env)?.name || project || "view"}
         </Text>
       </Group>
 
@@ -835,7 +835,7 @@ export default function HostsTab({ settings }: { settings: Settings | undefined 
         editing={modal.editing}
         settings={settings}
         hosts={hosts.data ?? []}
-        envNames={envNames}
+        envIds={envIds}
         onClose={() => setModal({ open: false, editing: null })}
       />
 

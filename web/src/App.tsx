@@ -131,17 +131,18 @@ function Shell() {
   const critical = alerts.filter((a) => a.severity === "crit").length;
   const active = alerts.filter((a) => a.severity !== "info").length;
   const notes = alerts.length - active;
-  const actions: SpotlightActionData[] = useMemo(
-    () =>
-      (fleet.data?.hosts ?? []).map((host) => ({
-        id: host.alias,
-        label: host.alias,
-        description: [host.env, host.role, host.hostname].filter(Boolean).join(" · "),
-        onClick: () => navigate(`/fleet?host=${encodeURIComponent(host.alias)}`),
-        leftSection: <IconServer size={16} />,
-      })),
-    [fleet.data, navigate],
-  );
+  const actions: SpotlightActionData[] = useMemo(() => {
+    // Every project's hosts are searched here, so each is named with its project: two projects
+    // may each have a "staging".
+    const where = new Map((config.data?.environments ?? []).map((e) => [e.id, `${e.project} · ${e.name}`]));
+    return (fleet.data?.hosts ?? []).map((host) => ({
+      id: host.alias,
+      label: host.alias,
+      description: [where.get(host.env) ?? host.env, host.role, host.hostname].filter(Boolean).join(" · "),
+      onClick: () => navigate(`/fleet?host=${encodeURIComponent(host.alias)}`),
+      leftSection: <IconServer size={16} />,
+    }));
+  }, [fleet.data, config.data, navigate]);
 
   const isTerminal = location.pathname.startsWith("/terminal/");
   if (isTerminal) {

@@ -27,7 +27,7 @@ const SINCE = [
 
 export default function AuditPage() {
   const config = useConfig();
-  const { envNames } = useEnv();
+  const { envIds } = useEnv();
   // The newest PAGE entries to begin with: the trail grows without bound, and the last page of it
   // is the part anyone opens this screen to read.
   // Both kept between visits, like every page's filters (state/views).
@@ -36,9 +36,9 @@ export default function AuditPage() {
   const [since, setSince] = useViewState<string | null>("audit.since", null);
   // Scoped like every other view, and filtered by the server over the whole trail. An entry with
   // no environment — a settings change, a sound toggle — belongs to none, so it is always shown.
-  const query = { action, since, envs: envNames };
+  const query = { action, since, envs: envIds };
   const audit = useQuery({
-    queryKey: ["audit", limit, action, since, envNames],
+    queryKey: ["audit", limit, action, since, envIds],
     queryFn: () => api.audit({ ...query, limit }),
     refetchInterval: 20_000,
     placeholderData: keepPreviousData, // the table stays put while a longer page loads

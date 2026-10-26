@@ -10,10 +10,12 @@ export function pausedItself(host: Pausable): boolean {
   return host.paused_by?.kind === "host" && host.paused_by.name === host.alias;
 }
 
-/** "acme-prod-api", "Environment staging", "Project acme": how a pause target is named. */
-export function pauseTargetLabel(target: PausedBy): string {
+/** "acme-prod-api", "Environment staging", "Project acme": how a pause target is named. An
+ *  environment is held by its id; given the environments, it is called by its name instead. */
+export function pauseTargetLabel(target: PausedBy, environments?: { id: string; name: string }[]): string {
   if (target.kind === "host") return target.name;
-  return `${target.kind === "project" ? "Project" : "Environment"} ${target.name}`;
+  if (target.kind === "project") return `Project ${target.name}`;
+  return `Environment ${environments?.find((e) => e.id === target.name)?.name ?? target.name}`;
 }
 
 /** One sentence on why sshfleet makes no connection to this host. */

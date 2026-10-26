@@ -6,10 +6,11 @@ binary, and every field has a default so a half-written file still loads.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 
 class HostRole(StrEnum):
@@ -87,6 +88,14 @@ class EnvironmentCfg:
     project: str = ""
     #: Monitoring stopped for every host in it, until it is resumed.
     paused: bool = False
+    #: What everything else refers to it by: its hosts, tunnels, the audit, the web interface.
+    #: Unique across every project, while ``name`` need only be unique inside its own, so two
+    #: projects can each have a ``staging``. It is the name unless that was taken when the
+    #: environment was registered, and it never changes afterwards.
+    id: str = ""
+
+    def __post_init__(self) -> None:
+        self.id = self.id or self.name
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> EnvironmentCfg:
@@ -106,11 +115,14 @@ class EnvironmentCfg:
             bastions=raw.get("bastions", "auto"),
             project=str(raw.get("project") or ""),
             paused=bool(raw.get("paused")),
+            id=str(raw.get("id") or ""),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        out: dict[str, Any] = {
-            "name": self.name,
+        out: dict[str, Any] = {"name": self.name}
+        if self.id != self.name:  # written only when it differs, so older files stay as they were
+            out["id"] = self.id
+        out |= {
             "short": self.short,
             "color": self.color,
             "ssh_config_path": str(self.ssh_config_path),
@@ -126,6 +138,43 @@ class EnvironmentCfg:
         if self.paused:  # written only while it is set
             out["paused"] = True
         return out
+
+
+class _Named(Protocol):
+    @property
+    def id(self) -> str: ...
+    @property
+    def name(self) -> str: ...
+    @property
+    def short(self) -> str: ...
+    @property
+    def project(self) -> str | None: ...
+
+
+
+def matching_environments[E: _Named](environments: Sequence[E], ref: str) -> list[E]:
+    """The environments ``ref`` can stand for.
+
+    An id names exactly one, and wins: it is what the web interface and the stored config use.
+    Anything else is what a person types, so a name or a short label matches every environment
+    that has it, and ``project/name`` picks one out when two projects use the same name.
+    """
+    exact = [e for e in environments if e.id == ref]
+    if exact:
+        return exact
+    return [e for e in environments if ref in (e.name, e.short, f"{e.project}/{e.name}", f"{e.project}/{e.short}")]
+
+
+def only_environment[E: _Named](environments: Sequence[E], ref: str, error: type[Exception]) -> E:
+    """The one environment ``ref`` stands for, or ``error`` saying why there is not one."""
+    matches = matching_environments(environments, ref)
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        which = ", ".join(f"{e.project}/{e.name}" for e in matches)
+        raise error(f"{ref!r} could be any of {which}: say which, as project/name")
+    known = ", ".join(e.id for e in environments) or "none configured"
+    raise error(f"unknown environment {ref!r} (known: {known})")
 
 
 @dataclass(slots=True)
@@ -346,12 +395,9 @@ class Config:
     logs: LogsCfg = field(default_factory=LogsCfg)
     extra: dict[str, Any] = field(default_factory=dict)
 
-    def environment(self, name: str) -> EnvironmentCfg:
-        for env in self.environments:
-            if env.name == name or env.short == name:
-                return env
-        known = ", ".join(e.name for e in self.environments) or "none configured"
-        raise ConfigError(f"unknown environment {name!r} (known: {known})")
+    def environment(self, ref: str) -> EnvironmentCfg:
+        """The environment ``ref`` stands for; see :func:`matching_environments`."""
+        return only_environment(self.environments, ref, ConfigError)
 
     def project(self, name: str) -> ProjectCfg | None:
         """The declared record, or None when no project goes by that name."""

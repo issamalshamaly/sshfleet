@@ -14,6 +14,8 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..config.schema import matching_environments, only_environment
+
 #: How wide a short log tag may be, so merged output lines up.
 LABEL_WIDTH = 8
 
@@ -46,6 +48,7 @@ def strip_env_prefix(alias: str, prefix: str | None) -> str:
 @dataclass(slots=True)
 class Host:
     alias: str
+    #: The id of its environment (see EnvironmentCfg.id), not the name shown for it.
     env: str
     hostname: str | None = None
     user: str | None = None
@@ -121,19 +124,16 @@ class Environment:
     alias_prefix: str | None = None
     key_path: Path | None = None
     ssh_config_path: Path | None = None
+    #: Unique across projects, where the name is unique only inside its own. See EnvironmentCfg.id.
+    id: str = ""
+
+    def __post_init__(self) -> None:
+        self.id = self.id or self.name
 
 
-#: Which environments an operation covers: one (by name or short label), several (one project's,
-#: say), or every one when None.
+#: Which environments an operation covers: one (by id, or by name or short label), several (one
+#: project's, say), or every one when None.
 EnvScope = str | Collection[str] | None
-
-
-def in_scope(environment: Environment, env: EnvScope) -> bool:
-    # An empty collection (a project with no environments yet) covers nothing, not everything.
-    if env is None or env == "":
-        return True
-    names = (env,) if isinstance(env, str) else env
-    return environment.name in names or environment.short in names
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,8 +156,16 @@ class Inventory:
     #: Projects whose monitoring is stopped: every host of every environment in them.
     paused_projects: set[str] = field(default_factory=set)
 
+    def in_scope(self, env: EnvScope) -> list[Environment]:
+        # An empty collection (a project with no environments yet) covers nothing, not everything.
+        if env is None or env == "":
+            return list(self.environments)
+        refs = (env,) if isinstance(env, str) else env
+        ids = {e.id for ref in refs for e in matching_environments(self.environments, ref)}
+        return [e for e in self.environments if e.id in ids]
+
     def hosts(self, env: EnvScope = None) -> list[Host]:
-        return [h for e in self.environments if in_scope(e, env) for h in e.hosts]
+        return [h for e in self.in_scope(env) for h in e.hosts]
 
     def host(self, alias: str) -> Host:
         try:
@@ -165,18 +173,12 @@ class Inventory:
         except KeyError:
             raise KeyError(f"unknown host alias {alias!r}") from None
 
-    def environment(self, name: str) -> Environment:
-        for env in self.environments:
-            if env.name == name or env.short == name:
-                return env
-        known = ", ".join(e.name for e in self.environments) or "none"
-        raise KeyError(f"unknown environment {name!r} (known: {known})")
+    def environment(self, ref: str) -> Environment:
+        return only_environment(self.environments, ref, KeyError)
 
     def bastions(self, env: EnvScope = None) -> list[str]:
         out: list[str] = []
-        for environment in self.environments:
-            if not in_scope(environment, env):
-                continue
+        for environment in self.in_scope(env):
             for alias in environment.bastions:
                 if alias not in out:
                     out.append(alias)
@@ -204,12 +206,12 @@ class Inventory:
         return None
 
     def _held(self, host: Host) -> PausedBy | None:
-        environment = next((e for e in self.environments if e.name == host.env), None)
+        environment = next((e for e in self.environments if e.id == host.env), None)
         if environment is not None:
             if environment.project and environment.project in self.paused_projects:
                 return PausedBy("project", environment.project)
             if environment.paused:
-                return PausedBy("environment", environment.name)
+                return PausedBy("environment", environment.id)
         return PausedBy("host", host.alias) if host.paused else None
 
     def paused_reason(self, alias: str) -> str | None:

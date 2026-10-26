@@ -203,11 +203,17 @@ def load_mapping(raw: dict[str, Any]) -> Config:
     environments = [EnvironmentCfg.from_dict(e) for e in (raw.get("environments") or [])]
     seen: set[str] = set()
     for env in environments:
-        if env.name in seen:
-            raise ConfigError(f"duplicate environment {env.name!r}")
-        seen.add(env.name)
+        if env.id in seen:
+            raise ConfigError(f"duplicate environment {env.id!r} (two projects may share a name, but each needs its own id)")
+        seen.add(env.id)
 
     _file_every_environment_under_a_project(projects, environments)
+    # A name is unique inside its project only, which is where it is shown.
+    named: set[tuple[str, str]] = set()
+    for env in environments:
+        if (env.project, env.name) in named:
+            raise ConfigError(f"project {env.project!r} has two environments called {env.name!r}")
+        named.add((env.project, env.name))
 
     known = set(D.DEFAULT_CONFIG) | {"extra"}
     return Config(

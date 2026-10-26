@@ -20,14 +20,14 @@ app = typer.Typer(no_args_is_help=True, help="Register and inspect environments 
 
 @app.command("add")
 def add(
-    name: Annotated[str, typer.Option("--name", "-n", help="Environment name, e.g. production.")],
+    name: Annotated[str, typer.Option("--name", "-n", help="Environment name, e.g. production. Unique within its project.")],
     ssh_config: Annotated[Path, typer.Option("--ssh-config", "-c", help="SSH config file listing the hosts.")],
     key: Annotated[Path | None, typer.Option("--key", "-k", help="Identity file path (recorded and stat-ed; never read).")] = None,
     short: Annotated[str | None, typer.Option("--short", help="Short label used in tables.")] = None,
     color: Annotated[str | None, typer.Option("--color", help="Colour for the environment chip.")] = None,
     bastion: Annotated[list[str] | None, typer.Option("--bastion", help="Bastion alias (repeatable). Default: auto-detect from ProxyJump.")] = None,
     project: Annotated[str | None, typer.Option("--project", help="The project it belongs to. Create it first with `sshfleet project add`.")] = None,
-    replace: Annotated[bool, typer.Option("--replace", help="Overwrite an existing environment of the same name.")] = False,
+    replace: Annotated[bool, typer.Option("--replace", help="Overwrite the project's environment of the same name.")] = False,
     test: Annotated[bool, typer.Option("--test/--no-test", help="Open the bastion connection after saving.")] = True,
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable output.")] = False,
 ) -> None:
@@ -57,15 +57,16 @@ def add(
             key_note = f"{check.path}: {'; '.join(check.problems)} — fix with `{check.fix}`"
 
     config_loader.save(context.config, context.paths.config_file)
-    context.remember(f"environment {name} registered")
+    context.remember(f"environment {env_cfg.project}/{name} registered")
     context.inventory = build_inventory(context.config)
     context.mux.inventory = context.inventory
     ssh_config_path = context.mux.write_ssh_config()
 
-    hosts = [h for h in context.inventory.hosts(name)]
-    bastions = context.inventory.environment(name).bastions
+    hosts = [h for h in context.inventory.hosts(env_cfg.id)]
+    bastions = context.inventory.environment(env_cfg.id).bastions
     result: dict[str, Any] = {
         "environment": env_cfg.name,
+        "id": env_cfg.id,
         "hosts": len(hosts),
         "bastions": bastions,
         "alias_prefix": info_preview.prefix,
@@ -75,10 +76,10 @@ def add(
     }
 
     if test and bastions:
-        results = asyncio.run(context.mux.warm_bastions(name))
+        results = asyncio.run(context.mux.warm_bastions(env_cfg.id))
         result["bastion_test"] = {a: {"ok": r.ok, "error": r.message, "seconds": round(r.elapsed, 2)} for a, r in results.items()}
 
-    context.audit.append("env.add", env=name, target=str(ssh_config), status="ok")
+    context.audit.append("env.add", env=env_cfg.id, target=str(ssh_config), status="ok")
 
     # Registered either way; but a test that could not reach a bastion is a failed test, and a
     # script running `env add --test` has to be able to tell.
@@ -89,7 +90,8 @@ def add(
         emit_json(result, ok=not unreachable)
         raise typer.Exit(Exit.FAILED if unreachable else Exit.OK)
 
-    console.print(f"[green]registered[/green] environment [bold]{name}[/bold]: {len(hosts)} hosts, "
+    known_as = f" (id {env_cfg.id})" if env_cfg.id != env_cfg.name else ""
+    console.print(f"[green]registered[/green] environment [bold]{name}[/bold]{known_as}: {len(hosts)} hosts, "
                   f"prefix {info_preview.prefix or '(none)'}, bastions: {', '.join(bastions) or '(none)'}")
     console.print(f"generated ssh config: {ssh_config_path}")
     if key_note:
@@ -149,12 +151,13 @@ def list_envs(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
     data: list[dict[str, Any]] = []
     for env in context.config.environments:
         try:
-            hosts = context.inventory.hosts(env.name)
-            bastions = context.inventory.environment(env.name).bastions
+            hosts = context.inventory.hosts(env.id)
+            bastions = context.inventory.environment(env.id).bastions
         except KeyError:
             hosts, bastions = [], []
         data.append(
             {
+                "id": env.id,
                 "name": env.name,
                 "short": env.short,
                 "color": env.color,
@@ -172,11 +175,16 @@ def list_envs(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
     if not data:
         info("no environments registered — add one with `sshfleet env add --name … --ssh-config …`")
         return
+    # The id gets a column only once one differs from its name: two projects sharing a name.
+    ids = any(d["id"] != d["name"] for d in data)
     console.print(
         table(
             "Environments",
-            ["name", "short", "project", "hosts", "bastions", "ssh config"],
-            [[d["name"], d["short"], d["project"], d["hosts"], ", ".join(d["bastions"]), _home_relative(d["ssh_config"])] for d in data],
+            ["name", *(["id"] if ids else []), "short", "project", "hosts", "bastions", "ssh config"],
+            [
+                [d["name"], *([d["id"]] if ids else []), d["short"], d["project"], d["hosts"], ", ".join(d["bastions"]), _home_relative(d["ssh_config"])]
+                for d in data
+            ],
         )
     )
 
@@ -190,7 +198,7 @@ def _home_relative(path: str) -> str:
 
 @app.command("test")
 def test_env(
-    name: Annotated[str, typer.Argument(help="Environment name.")],
+    name: Annotated[str, typer.Argument(help="Environment id or name (project/name when two projects share it).")],
     host: Annotated[str | None, typer.Option("--host", help="Also test this specific host alias.")] = None,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
@@ -203,7 +211,7 @@ def test_env(
         raise typer.Exit(Exit.USAGE) from exc
 
     async def run() -> dict[str, Any]:
-        results = await context.mux.warm_bastions(environment.name)
+        results = await context.mux.warm_bastions(environment.id)
         payload: dict[str, Any] = {
             "bastions": {a: {"ok": r.ok, "error": r.message, "seconds": round(r.elapsed, 2)} for a, r in results.items()}
         }
@@ -237,7 +245,7 @@ def test_env(
 
 @app.command("remove")
 def remove(
-    name: Annotated[str, typer.Argument(help="Environment name.")],
+    name: Annotated[str, typer.Argument(help="Environment id or name (project/name when two projects share it).")],
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt.")] = False,
 ) -> None:
     """Remove an environment from the config (SSH config files are never touched)."""
@@ -245,14 +253,14 @@ def remove(
     if not yes:
         typer.confirm(f"Remove environment {name!r} from sshfleet config?", abort=True)
     try:
-        envsetup.remove_environment(context.config, name)
+        removed = envsetup.remove_environment(context.config, name)
     except ConfigError as exc:
         fail(str(exc))
         raise typer.Exit(Exit.USAGE) from exc
     config_loader.save(context.config, context.paths.config_file)
-    context.remember(f"environment {name} removed")
+    context.remember(f"environment {removed.project}/{removed.name} removed")
     context.inventory = build_inventory(context.config)
     context.mux.inventory = context.inventory
     context.mux.write_ssh_config()
-    context.audit.append("env.remove", env=name, status="ok")
-    console.print(f"[green]removed[/green] environment {name}")
+    context.audit.append("env.remove", env=removed.id, status="ok")
+    console.print(f"[green]removed[/green] environment {removed.project}/{removed.name}")

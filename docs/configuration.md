@@ -6,8 +6,10 @@ per-host records above, the useful keys:
 ```yaml
 projects:
   - {name: acme, color: violet, description: Customer platform}
+  - {name: beta, color: teal}
 environments:
   - {name: production, ssh_config_path: ~/.ssh/config.d/production, project: acme, short: prod}
+  - {name: production, id: beta-production, ssh_config_path: ~/.ssh/config.d/beta_prod, project: beta, short: prod}
 refresh:     {fast_s: 120, connect_timeout_s: 10, collector_timeout_s: 25}
 concurrency: {global: 16, per_bastion: 8}
 thresholds:  {disk_warn_pct: 80, disk_crit_pct: 90, mem_warn_pct: 85, vanished_memory_s: 21600}
@@ -28,6 +30,15 @@ when it loads rather than refused: its environments join the first project there
 called `default` that you rename afterwards — renaming carries every environment with it. A
 project has to be empty before it can be removed, so an environment is never left belonging to
 nothing.
+
+An environment's name has to be unique only inside its project, so two projects can each have a
+`staging` and a `production`. Everything else — its hosts, tunnels, the audit trail, the web
+interface's links and `--env` — refers to it by its `id`, which is unique across every project.
+The id is the name unless another environment already had that id when this one was registered;
+then it is `<project>-<name>` (`beta-production` above). It is written to the file only when it
+differs from the name, and it never changes, not even when the project is renamed. On the command
+line an environment can also be named as `project/name`; a name or short label that two projects
+share is refused as ambiguous rather than guessed.
 
 `hosts.<alias>.connect_timeout_s` overrides the fleet-wide `refresh.connect_timeout_s` for one
 host. A host can answer perfectly and still take half a minute to let you in — a wedged

@@ -421,7 +421,7 @@ function PathsTab() {
 
 export default function SettingsPage() {
   const settings = useSettings();
-  const { project, envNames } = useEnv();
+  const { project, envIds } = useEnv();
   const [params, setParams] = useSearchParams();
   const TABS = ["projects", "hosts", "checks", "files", "history", "share"];
   const requested = params.get("tab") ?? "";
@@ -441,7 +441,7 @@ export default function SettingsPage() {
         <Tooltip label={project ? `Every host in ${project}` : "Every host sshfleet knows about"}>
           <Badge size="lg" variant="light" color="gray" leftSection={<IconServer2 size={13} />}>
             {(settings.data?.environments ?? [])
-              .filter((e) => envNames.includes(e.name))
+              .filter((e) => envIds.includes(e.id))
               .reduce((total, e) => total + e.hosts, 0)}{" "}
             hosts
           </Badge>

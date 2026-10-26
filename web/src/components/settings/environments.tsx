@@ -101,6 +101,7 @@ export function EnvironmentModal({
   opened,
   onClose,
   editing,
+  settings,
   projects,
   defaultProject,
 }: ModalProps & { projects: ProjectSettings[]; defaultProject?: string }) {
@@ -168,7 +169,7 @@ export function EnvironmentModal({
         project,
       };
       return editing
-        ? api.settings.updateEnvironment(editing.name, { ...body, ssh_config_path: path.trim() })
+        ? api.settings.updateEnvironment(editing.id, { ...body, ssh_config_path: path.trim() })
         : api.settings.addEnvironment({ ...body, name: name.trim(), ssh_config_path: mode === "new" ? "" : path.trim() });
     },
     onSuccess: (result) => {
@@ -189,7 +190,9 @@ export function EnvironmentModal({
 
   const parseError = preview.isError ? String((preview.error as Error).message) : null;
   const phone = useIsPhone();
-  const ready = name.trim().length > 0 && !!project && (mode === "new" || path.trim().length > 3) && !save.isPending;
+  // A name is unique inside its project only: another project may have its own "staging".
+  const taken = !editing && (settings?.environments ?? []).some((e) => e.project === project && e.name === name.trim());
+  const ready = name.trim().length > 0 && !taken && !!project && (mode === "new" || path.trim().length > 3) && !save.isPending;
 
   return (
     <ResponsiveModal opened={opened} onClose={onClose} title={editing ? `Edit ${editing.name}` : "Add an environment"} size="lg" centered>
@@ -320,6 +323,7 @@ export function EnvironmentModal({
               placeholder="production"
               value={name}
               onChange={(e) => setName(e.currentTarget.value)}
+              error={taken ? `${project} already has an environment called ${name.trim()}` : undefined}
               disabled={!!editing}
             />
           </Grid.Col>

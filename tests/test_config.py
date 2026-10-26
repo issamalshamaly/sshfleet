@@ -296,10 +296,80 @@ def test_add_environment_refuses_a_duplicate_without_replace(tmp_path: Path):
     config = config_loader.load(tmp_path / "absent.yaml")
     envsetup.add_project(config, name="acme")
     envsetup.add_environment(config, name="production", ssh_config_path=SAMPLE, project="acme")
-    with pytest.raises(ConfigError, match="already exists"):
+    with pytest.raises(ConfigError, match="already has an environment called"):
         envsetup.add_environment(config, name="production", ssh_config_path=SAMPLE, project="acme")
     envsetup.add_environment(config, name="production", ssh_config_path=SAMPLE, project="acme", replace=True)
     assert len(config.environments) == 1
+
+
+def test_two_projects_can_each_have_an_environment_of_the_same_name(tmp_path: Path):
+    """A name is unique inside its project; the second "production" gets an id of its own."""
+    config = config_loader.load(tmp_path / "absent.yaml")
+    envsetup.add_project(config, name="acme")
+    envsetup.add_project(config, name="Other Co")
+    first = envsetup.add_environment(config, name="production", ssh_config_path=SAMPLE, project="acme")
+    second = envsetup.add_environment(config, name="production", ssh_config_path=SAMPLE, project="Other Co")
+    assert (first.id, second.id) == ("production", "other-co-production")
+    # Replacing keeps the id, so whatever points at it still does.
+    replaced = envsetup.add_environment(config, name="production", ssh_config_path=SAMPLE, project="Other Co", replace=True)
+    assert replaced.id == "other-co-production" and len(config.environments) == 2
+
+    path = tmp_path / "config.yaml"
+    config_loader.save(config, path)
+    raw = yaml.safe_load(path.read_text())
+    # The id is written only where it is not the name, so a file from before ids reads the same.
+    assert ["id" in e for e in raw["environments"]] == [False, True]
+    assert [e.id for e in config_loader.load(path).environments] == ["production", "other-co-production"]
+
+
+def test_an_environment_is_found_by_id_or_by_project_and_name(tmp_path: Path):
+    config = config_loader.load(tmp_path / "absent.yaml")
+    for project in ("acme", "beta"):
+        envsetup.add_project(config, name=project)
+        envsetup.add_environment(config, name="staging", short="st", ssh_config_path=SAMPLE, project=project)
+    assert config.environment("staging").project == "acme"  # an id wins
+    assert config.environment("beta-staging").project == "beta"
+    assert config.environment("beta/staging").id == "beta-staging"
+    with pytest.raises(ConfigError, match="could be any of acme/staging, beta/staging"):
+        config.environment("st")  # a short label both share
+    with pytest.raises(ConfigError, match="unknown environment"):
+        config.environment("gamma/staging")
+    assert envsetup.remove_environment(config, "beta/staging").id == "beta-staging"
+    assert [e.id for e in config.environments] == ["staging"]
+
+
+def test_a_new_id_is_numbered_when_even_the_project_form_is_taken(tmp_path: Path):
+    config = config_loader.load(tmp_path / "absent.yaml")
+    config.environments = [
+        EnvironmentCfg(name="staging", ssh_config_path=SAMPLE, project="acme"),
+        EnvironmentCfg(name="other", ssh_config_path=SAMPLE, project="x", id="beta-staging"),
+    ]
+    assert envsetup.new_env_id(config, "beta", "staging") == "beta-staging-2"
+    assert envsetup.new_env_id(config, "beta", "qa") == "qa"
+
+
+def test_the_loader_refuses_a_shared_id_or_a_name_twice_in_one_project(tmp_path: Path):
+    def load(*environments: dict) -> Config:
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.safe_dump({"version": 3, "projects": [{"name": "a"}, {"name": "b"}], "environments": list(environments)}))
+        return config_loader.load(path)
+
+    one = {"name": "staging", "ssh_config_path": str(SAMPLE), "project": "a"}
+    assert [e.id for e in load(one, {**one, "project": "b", "id": "b-staging"}).environments] == ["staging", "b-staging"]
+    with pytest.raises(ConfigError, match="duplicate environment 'staging'"):
+        load(one, {**one, "project": "b"})  # same name, and no id to tell them apart
+    with pytest.raises(ConfigError, match="project 'a' has two environments called 'staging'"):
+        load(one, {**one, "id": "another"})
+
+
+def test_a_refused_registration_creates_no_file(tmp_path: Path):
+    config = config_loader.load(tmp_path / "absent.yaml")
+    envsetup.add_project(config, name="acme")
+    envsetup.add_environment(config, name="staging", ssh_config_path=SAMPLE, project="acme")
+    target = tmp_path / "config.d" / "acme_st2"
+    with pytest.raises(ConfigError, match="already has an environment called"):
+        envsetup.add_environment(config, name="staging", ssh_config_path=target, project="acme", create_file=True)
+    assert not target.exists() and not target.parent.exists()
 
 
 def test_preview_of_an_empty_or_missing_file_needs_allow_empty(tmp_path: Path):

@@ -286,6 +286,57 @@ async def test_a_duplicate_environment_is_refused_unless_replacing(web, sample_e
     assert (await client.post("/api/settings/environments", json={**body, "replace": True})).status_code == 200
 
 
+async def test_two_projects_can_each_have_a_staging(web, tmp_path, monkeypatch):
+    """What a second project needs: its own "testing", told apart from lab's by its id."""
+    monkeypatch.setenv("SSHFLEET_SSH_DIR", str(tmp_path / "ssh"))
+    client, state = web
+    assert (await client.post("/api/settings/projects", json={"name": "acme"})).status_code == 200
+
+    added = await client.post("/api/settings/environments", json={"name": "testing", "ssh_config_path": "", "project": "acme"})
+    assert added.status_code == 200, added.text
+    assert added.json()["environment"] == "acme-testing"
+    settings = (await client.get("/api/settings")).json()
+    assert [(e["id"], e["name"], e["project"]) for e in settings["environments"]] == [
+        ("testing", "testing", "lab"),
+        ("acme-testing", "testing", "acme"),
+    ]
+    assert [p["environments"] for p in settings["projects"]] == [["testing"], ["acme-testing"]]
+    assert [e["id"] for e in (await client.get("/api/config")).json()["environments"]] == ["testing", "acme-testing"]
+
+    # A host goes to the environment the id names, and the fleet keeps the two apart.
+    host = await client.post("/api/settings/hosts", json={"env": "acme-testing", "alias": "web", "hostname": "192.0.2.10"})
+    assert host.status_code == 200, host.text
+    assert (tmp_path / "ssh" / "config.d" / "acme_test").read_text().count("Host acme_test_web") == 1
+    hosts = (await client.get("/api/fleet")).json()["hosts"]
+    assert [h["alias"] for h in hosts if h["env"] == "acme-testing"] == ["acme_test_web"]
+    assert sum(h["env"] == "testing" for h in hosts) == 8
+
+    # Pausing one leaves the other being watched.
+    assert (await client.patch("/api/settings/environments/acme-testing", json={"paused": True})).status_code == 200
+    assert state.context.inventory.paused_by("acme_test_web").to_dict() == {"kind": "environment", "name": "acme-testing"}
+    assert state.context.inventory.paused_by("tst-order") is None
+
+    # lab cannot take a second "testing" either way: neither added nor moved in.
+    moved = await client.patch("/api/settings/environments/testing", json={"project": "acme"})
+    assert moved.status_code == 400 and "already has an environment called 'testing'" in moved.json()["detail"]
+
+    removed = await client.delete("/api/settings/environments/acme-testing")
+    assert removed.status_code == 200
+    assert [e["id"] for e in (await client.get("/api/settings")).json()["environments"]] == ["testing"]
+
+
+async def test_a_name_the_project_has_is_refused_before_any_file_is_made(web, tmp_path, monkeypatch):
+    """A refused registration used to leave its new, empty file behind in ~/.ssh/config.d."""
+    monkeypatch.setenv("SSHFLEET_SSH_DIR", str(tmp_path / "ssh"))
+    client, _ = web
+    response = await client.post(
+        "/api/settings/environments", json={"name": "testing", "short": "t2", "ssh_config_path": "", "project": "lab"}
+    )
+    assert response.status_code == 400
+    assert "project 'lab' already has an environment called 'testing'" in response.json()["detail"]
+    assert not (tmp_path / "ssh" / "config.d" / "lab_t2").exists()
+
+
 # --------------------------------------------------------------- refresh interval, watch
 
 

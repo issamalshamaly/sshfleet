@@ -88,7 +88,7 @@ async def refresh(request: Request, env: str | None = None, alias: str | None = 
         config = state.context.config
         if config.project(project) is None:
             raise HTTPException(404, f"unknown project {project!r}")
-        scope = [e.name for e in config.environments_of(project)]
+        scope = [e.id for e in config.environments_of(project)]
     state.spawn(state.refresh(scope))
     return {"ok": True, "started": True}
 

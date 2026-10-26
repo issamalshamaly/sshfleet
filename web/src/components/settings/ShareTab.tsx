@@ -56,6 +56,7 @@ const fileName = (path: string) => path.split("/").pop() ?? path;
 function ExportCard({ settings }: { settings: Settings | undefined }) {
   // Kept between visits like every page's choices (state/views).
   const [projects, setProjects] = useViewState<string[]>("settings.share.projects", []);
+  // Environment ids: two projects may each have a "staging", so the name alone would not do.
   const [environments, setEnvironments] = useViewState<string[]>("settings.share.environments", []);
   const [withLocal, setWithLocal] = useViewState("settings.share.withLocal", false);
   const [allowCommands, setAllowCommands] = useViewState("settings.share.allowCommands", false);
@@ -64,26 +65,28 @@ function ExportCard({ settings }: { settings: Settings | undefined }) {
   const projectNames = (settings?.projects ?? []).map((p) => p.name);
   const chosenProjects = projects.filter((name) => projectNames.includes(name));
   const offered = (settings?.environments ?? []).filter((e) => chosenProjects.includes(e.project));
-  const chosenEnvironments = environments.filter((name) => offered.some((e) => e.name === name));
+  const chosenEnvironments = environments.filter((id) => offered.some((e) => e.id === id));
+  const option = (e: { id: string; name: string }) => ({ value: e.id, label: e.name });
   const environmentData =
     chosenProjects.length > 1
       ? chosenProjects
-          .map((project) => ({ group: project, items: offered.filter((e) => e.project === project).map((e) => e.name) }))
+          .map((project) => ({ group: project, items: offered.filter((e) => e.project === project).map(option) }))
           .filter((group) => group.items.length > 0)
-      : offered.map((e) => e.name);
+      : offered.map(option);
   const pickProjects = (next: string[]) => {
     setProjects(next);
-    const stillOffered = new Set((settings?.environments ?? []).filter((e) => next.includes(e.project)).map((e) => e.name));
-    setEnvironments((current) => current.filter((name) => stillOffered.has(name)));
+    const stillOffered = new Set((settings?.environments ?? []).filter((e) => next.includes(e.project)).map((e) => e.id));
+    setEnvironments((current) => current.filter((id) => stillOffered.has(id)));
   };
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-  const projectOf = (name: string) => offered.find((e) => e.name === name)?.project;
+  const projectOf = (id: string) => offered.find((e) => e.id === id)?.project;
+  const nameOf = (id: string) => offered.find((e) => e.id === id)?.name ?? id;
   // Chosen environments go with their own projects only: a project with none of them chosen stays out.
-  const leftOut = chosenProjects.filter((project) => !chosenEnvironments.some((name) => projectOf(name) === project));
+  const leftOut = chosenProjects.filter((project) => !chosenEnvironments.some((id) => projectOf(id) === project));
   const going = !chosenProjects.length
     ? `everything: ${plural(projectNames.length, "project")}, ${plural((settings?.environments ?? []).length, "environment")}`
     : chosenEnvironments.length
-      ? `only ${chosenEnvironments.map((name) => `${name} (${projectOf(name)})`).join(", ")}${
+      ? `only ${chosenEnvironments.map((id) => `${nameOf(id)} (${projectOf(id)})`).join(", ")}${
           leftOut.length ? ` — nothing from ${leftOut.join(", ")}` : ""
         }`
       : `${chosenProjects.join(", ")}, with ${offered.length === 1 ? `its one environment, ${offered[0].name}` : `all ${plural(offered.length, "environment")}: ${offered.map((e) => e.name).join(", ")}`}`;

@@ -146,7 +146,7 @@ def tracked_files(config: Config, paths: Paths) -> list[TrackedFile]:
         own = env.ssh_config_path.expanduser()
         with contextlib.suppress(OSError):
             for path in included_files(own) or [own]:
-                out.append(TrackedFile(ROLE_SSH, path, env.name))
+                out.append(TrackedFile(ROLE_SSH, path, env.id))
     seen: set[str] = set()
     unique: list[TrackedFile] = []
     for item in out:

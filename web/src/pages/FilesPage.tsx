@@ -210,7 +210,8 @@ export default function FilesPage() {
     }
   };
 
-  const production = config.data?.environments.find((e) => e.name === host?.env)?.production ?? false;
+  const environment = config.data?.environments.find((e) => e.id === host?.env);
+  const production = environment?.production ?? false;
 
   return (
     <Stack gap="md" style={{ flex: 1 }}>
@@ -464,7 +465,7 @@ export default function FilesPage() {
                 Environment
               </Text>
               <Badge color={production ? "red" : "yellow"} variant={production ? "filled" : "light"} tt="uppercase">
-                {host.env}
+                {environment?.name ?? host.env}
               </Badge>
             </Group>
             <Text size="sm">

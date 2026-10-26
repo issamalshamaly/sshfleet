@@ -124,7 +124,7 @@ async def sources(request: Request, env: str, host: str | None = None):
     state = _state(request)
     context = state.context
     try:
-        context.config.environment(env)
+        env = context.config.environment(env).id
     except Exception as exc:
         raise HTTPException(404, str(exc)) from exc
 
@@ -173,7 +173,7 @@ async def search(request: Request, body: SearchBody):
     logs_cfg = context.config.logs
     try:
         environment = context.config.environment(body.env)
-        chosen = resolve_sources(state, environment.name, body.selection)
+        chosen = resolve_sources(state, environment.id, body.selection)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
     if not chosen:
@@ -204,12 +204,12 @@ async def search(request: Request, body: SearchBody):
 
     bundle = None
     if body.download:
-        directory = bundle_dir(context.download_dir, environment.name, body.pattern or "all")
-        bundle = Bundle(directory=directory, request=search_request, env=environment.name)
+        directory = bundle_dir(context.download_dir, environment.id, body.pattern or "all")
+        bundle = Bundle(directory=directory, request=search_request, env=environment.id)
 
     # Recorded whether or not it is saved: a search reads production logs either way.
     context.audit.append(
-        "logs.search", env=environment.name, target=(body.pattern or "")[:200] or None, status="started",
+        "logs.search", env=environment.id, target=(body.pattern or "")[:200] or None, status="started",
         note=describe_sources(chosen) + ("; saved as a bundle" if bundle else ""),
     )
     coordinator = SearchCoordinator(context.runner, context.inventory, context.config)
@@ -244,7 +244,7 @@ async def search(request: Request, body: SearchBody):
             bundle_path = None
             if bundle and summary is not None:
                 bundle_path = str(bundle.close(summary))
-                context.audit.append("logs.download", env=environment.name, target=bundle_path, status="ok",
+                context.audit.append("logs.download", env=environment.id, target=bundle_path, status="ok",
                                      note=f"web, {summary.matches} matches")
             if summary is not None:
                 yield (json.dumps({
@@ -265,7 +265,7 @@ async def follow_logs(request: Request, body: FollowBody):
     context = state.context
     try:
         environment = context.config.environment(body.env)
-        chosen = resolve_sources(state, environment.name, body.selection)
+        chosen = resolve_sources(state, environment.id, body.selection)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
     if not chosen:
@@ -273,7 +273,7 @@ async def follow_logs(request: Request, body: FollowBody):
     limit = context.config.logs.follow_max_sources
     chosen = chosen[:limit]
     context.audit.append(
-        "logs.follow", env=environment.name, target=(body.pattern or "")[:200] or None, status="started", note=describe_sources(chosen)
+        "logs.follow", env=environment.id, target=(body.pattern or "")[:200] or None, status="started", note=describe_sources(chosen)
     )
 
     async def stream() -> AsyncGenerator[bytes, None]:

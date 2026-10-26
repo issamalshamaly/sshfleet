@@ -242,9 +242,10 @@ export default function FleetPage() {
     if (!project) return [];
     if (config.data?.projects.find((p) => p.name === project)?.paused) return [{ kind: "project", name: project }];
     return (config.data?.environments ?? [])
-      .filter((e) => e.project === project && e.paused && inScope(e.name))
-      .map((e) => ({ kind: "environment", name: e.name }));
+      .filter((e) => e.project === project && e.paused && inScope(e.id))
+      .map((e) => ({ kind: "environment", name: e.id }));
   }, [config.data, project, inScope]);
+  const nameOf = (envId: string) => config.data?.environments.find((e) => e.id === envId)?.name ?? envId;
 
   const selectedAlias = params.get("host");
   const thresholds = config.data?.thresholds ?? {};
@@ -351,8 +352,8 @@ export default function FleetPage() {
           <Group justify="space-between" gap="sm" wrap="wrap">
             <Text size="sm">
               {pausedScopes.length === 1
-                ? `${pauseTargetLabel(pausedScopes[0])} is paused — sshfleet makes no connection to its hosts until it is resumed.`
-                : `${pausedScopes.length} environments are paused (${pausedScopes.map((s) => s.name).join(", ")}) — sshfleet makes no connection to their hosts until they are resumed.`}
+                ? `${pauseTargetLabel(pausedScopes[0], config.data?.environments)} is paused — sshfleet makes no connection to its hosts until it is resumed.`
+                : `${pausedScopes.length} environments are paused (${pausedScopes.map((s) => nameOf(s.name)).join(", ")}) — sshfleet makes no connection to their hosts until they are resumed.`}
             </Text>
             <Group gap="xs">
               {pausedScopes.map((target) => (
@@ -369,7 +370,7 @@ export default function FleetPage() {
                   }
                   onClick={() => setPaused.mutate({ target, paused: false })}
                 >
-                  Resume {target.name}
+                  Resume {target.kind === "environment" ? nameOf(target.name) : target.name}
                 </Button>
               ))}
             </Group>

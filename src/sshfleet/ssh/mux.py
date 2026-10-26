@@ -128,7 +128,7 @@ class MuxManager:
                     prefix = _one_line(env_cfg.alias_pattern, f"{env_cfg.name}: alias_pattern").rstrip("*")
                 elif self.inventory is not None:
                     with contextlib.suppress(KeyError):
-                        environment = self.inventory.environment(env_cfg.name)
+                        environment = self.inventory.environment(env_cfg.id)
                         aliases = [h.alias for h in environment.hosts]
                         prefix = environment.alias_prefix or common_prefix(aliases)
                 if prefix or aliases:

@@ -28,7 +28,7 @@ interface Props {
   onClose: () => void;
   editing: Tunnel | null;
   hosts: Host[];
-  environments: { name: string }[];
+  environments: { id: string; name: string }[];
   /** The environment being looked at, if one is; a new tunnel starts there. */
   defaultEnv: string | null;
 }
@@ -59,7 +59,7 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
       setUrl(editing.url ?? "");
     } else {
       setName("");
-      setEnv(defaultEnv ?? environments[0]?.name ?? "");
+      setEnv(defaultEnv ?? environments[0]?.id ?? "");
       setVia("");
       setRemoteHost("127.0.0.1");
       setRemotePort(5601);
@@ -148,7 +148,7 @@ export default function TunnelModal({ opened, onClose, editing, hosts, environme
             <Select
               label="Environment"
               description="Where it lives"
-              data={environments.map((e) => ({ value: e.name, label: e.name }))}
+              data={environments.map((e) => ({ value: e.id, label: e.name }))}
               value={env}
               onChange={(value) => {
                 setEnv(value ?? "");

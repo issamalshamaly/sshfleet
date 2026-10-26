@@ -144,19 +144,23 @@ function ProjectDrawer({
   const resuming = (target: PausedBy) =>
     setPaused.isPending && setPaused.variables?.target.kind === target.kind && setPaused.variables?.target.name === target.name;
   const members = environments.filter((e) => e.project === project?.name);
+  // A pause target holds an environment by its id; it is shown by its name.
+  const nameOf = (target: PausedBy) =>
+    target.kind === "environment" ? (environments.find((e) => e.id === target.name)?.name ?? target.name) : target.name;
 
+  // Environments are acted on by id: the name is unique only inside the project.
   const test = useMutation({
-    mutationFn: (name: string) => api.settings.testEnvironment(name),
-    onSuccess: (result, name) => setTests((current) => ({ ...current, [name]: result })),
+    mutationFn: (id: string) => api.settings.testEnvironment(id),
+    onSuccess: (result, id) => setTests((current) => ({ ...current, [id]: result })),
     onError: (error) => notifications.show({ title: "Test failed", message: String((error as Error).message), color: "red" }),
   });
 
   const removeEnvironment = useMutation({
-    mutationFn: (name: string) => api.settings.removeEnvironment(name),
-    onSuccess: (_result, name) => {
+    mutationFn: (environment: EnvironmentSettings) => api.settings.removeEnvironment(environment.id),
+    onSuccess: (_result, environment) => {
       invalidate();
       setConfirmRemove(null);
-      notifications.show({ title: `${name} removed`, message: "The SSH config file itself was not touched.", color: "gray" });
+      notifications.show({ title: `${environment.name} removed`, message: "The SSH config file itself was not touched.", color: "gray" });
     },
     onError: (error) => notifications.show({ title: "Could not remove", message: String((error as Error).message), color: "red" }),
   });
@@ -246,7 +250,7 @@ function ProjectDrawer({
           ) : (
             <Stack gap="sm">
               {members.map((environment) => (
-                <Card key={environment.name} withBorder padding="sm">
+                <Card key={environment.id} withBorder padding="sm">
                   <Group justify="space-between" wrap="nowrap" align="flex-start">
                     {/* Badges never shrink (styles.css), so on a narrow screen they wrap instead. */}
                     <Group gap={8} wrap="wrap" style={{ minWidth: 0 }}>
@@ -320,7 +324,7 @@ function ProjectDrawer({
                     </Group>
                   </Stack>
 
-                  {tests[environment.name] && <TestResult result={tests[environment.name]} />}
+                  {tests[environment.id] && <TestResult result={tests[environment.id]} />}
 
                   <Group gap={4} mt="xs" justify="flex-end">
                     {environment.paused ? (
@@ -329,8 +333,8 @@ function ProjectDrawer({
                         variant="light"
                         color="teal"
                         leftSection={<IconPlayerPlay size={13} />}
-                        loading={resuming({ kind: "environment", name: environment.name })}
-                        onClick={() => setPaused.mutate({ target: { kind: "environment", name: environment.name }, paused: false })}
+                        loading={resuming({ kind: "environment", name: environment.id })}
+                        onClick={() => setPaused.mutate({ target: { kind: "environment", name: environment.id }, paused: false })}
                       >
                         Resume
                       </Button>
@@ -346,7 +350,7 @@ function ProjectDrawer({
                           color="orange"
                           leftSection={<IconPlayerPause size={13} />}
                           disabled={environment.hosts === 0}
-                          onClick={() => setConfirmPause({ target: { kind: "environment", name: environment.name }, hosts: environment.hosts })}
+                          onClick={() => setConfirmPause({ target: { kind: "environment", name: environment.id }, hosts: environment.hosts })}
                         >
                           Pause
                         </Button>
@@ -359,9 +363,9 @@ function ProjectDrawer({
                         variant="subtle"
                         color="gray"
                         leftSection={<IconPlugConnected size={13} />}
-                        loading={test.isPending && test.variables === environment.name}
+                        loading={test.isPending && test.variables === environment.id}
                         disabled={environment.paused || project.paused}
-                        onClick={() => test.mutate(environment.name)}
+                        onClick={() => test.mutate(environment.id)}
                       >
                         Test
                       </Button>
@@ -416,7 +420,7 @@ function ProjectDrawer({
             <Button
               color="red"
               loading={removeEnvironment.isPending}
-              onClick={() => confirmRemove && removeEnvironment.mutate(confirmRemove.name)}
+              onClick={() => confirmRemove && removeEnvironment.mutate(confirmRemove)}
             >
               Remove
             </Button>
@@ -427,7 +431,7 @@ function ProjectDrawer({
       <Modal
         opened={!!confirmPause}
         onClose={() => setConfirmPause(null)}
-        title={confirmPause ? `Pause ${confirmPause.target.kind} ${confirmPause.target.name}?` : ""}
+        title={confirmPause ? `Pause ${confirmPause.target.kind} ${nameOf(confirmPause.target)}?` : ""}
         centered
         zIndex={400}
       >
@@ -580,17 +584,17 @@ export default function ProjectsTab({ settings }: { settings: Settings | undefin
                       no environments yet
                     </Text>
                   ) : (
-                    project.environments.map((name) => {
-                      const environment = environments.find((e) => e.name === name);
+                    project.environments.map((id) => {
+                      const environment = environments.find((e) => e.id === id);
                       return (
                         <Badge
-                          key={name}
+                          key={id}
                           size="sm"
                           variant="light"
                           color={envColor(environment?.color ?? "gray")}
                           leftSection={environment?.paused ? <IconPlayerPause size={10} /> : undefined}
                         >
-                          {name}
+                          {environment?.name ?? id}
                         </Badge>
                       );
                     })

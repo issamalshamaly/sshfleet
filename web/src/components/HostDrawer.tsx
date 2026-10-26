@@ -123,7 +123,7 @@ export function HostDrawer({ host, environments, thresholds, onClose, onOpenTerm
       )
       .catch((error: Error) => notifications.show({ title: "Could not save", message: error.message, color: "red" }));
   const snapshot = host?.snapshot ?? null;
-  const production = environments.find((e) => e.name === host?.env)?.production ?? false;
+  const production = environments.find((e) => e.id === host?.env)?.production ?? false;
 
   const colorFor = (value: number, warn: number, crit: number) => (value >= crit ? "red" : value >= warn ? "yellow" : "teal");
   const loadPct = snapshot ? Math.min(100, Math.round((snapshot.load[0] / Math.max(snapshot.cpus, 1)) * 100)) : null;

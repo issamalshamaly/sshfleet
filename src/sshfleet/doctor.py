@@ -93,7 +93,7 @@ def run_checks(context: Context) -> list[Check]:
         if not env_cfg.ssh_config_path.exists():
             checks.append(
                 Check(
-                    f"env {env_cfg.name}",
+                    f"env {env_cfg.id}",
                     "warn",
                     f"no hosts yet: {env_cfg.ssh_config_path} does not exist",
                     "add a host on the Settings page, or fix the path in config.yaml",
@@ -101,16 +101,16 @@ def run_checks(context: Context) -> list[Check]:
             )
             continue
         try:
-            hosts = context.inventory.hosts(env_cfg.name)
+            hosts = context.inventory.hosts(env_cfg.id)
         except KeyError:
             hosts = []
-        checks.append(Check(f"env {env_cfg.name}", "ok" if hosts else "warn", f"{len(hosts)} hosts from {env_cfg.ssh_config_path}"))
+        checks.append(Check(f"env {env_cfg.id}", "ok" if hosts else "warn", f"{len(hosts)} hosts from {env_cfg.ssh_config_path}"))
 
         if env_cfg.key_path:
             result = check_key(env_cfg.key_path)
             checks.append(
                 Check(
-                    f"key {env_cfg.name}",
+                    f"key {env_cfg.id}",
                     "ok" if result.ok else "fail",
                     f"{result.path} (mode {result.mode:04o})" if result.exists else f"{result.path}: missing",
                     "" if result.ok else result.fix,
