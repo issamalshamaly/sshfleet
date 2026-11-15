@@ -359,7 +359,7 @@ class WebState:
         self, *, reason: str, reload_config: bool, source: str = "web", restored_from: str | None = None
     ) -> dict[str, Any]:
         context = self.context
-        before = {h.alias: (h.hostname, h.user, h.port, h.proxy_jump, h.env) for h in context.inventory.hosts()}
+        before = {h.alias: (h.hostname, h.user, h.port, h.proxy_jump, h.identity_file, h.env) for h in context.inventory.hosts()}
         paused_before = _paused(context.inventory)
 
         try:
@@ -389,7 +389,7 @@ class WebState:
         if context._runner is not None:
             context._runner.inventory = inventory
 
-        after = {h.alias: (h.hostname, h.user, h.port, h.proxy_jump, h.env) for h in inventory.hosts()}
+        after = {h.alias: (h.hostname, h.user, h.port, h.proxy_jump, h.identity_file, h.env) for h in inventory.hosts()}
         added = sorted(set(after) - set(before))
         removed = sorted(set(before) - set(after))
         changed = sorted(a for a in set(before) & set(after) if before[a] != after[a])

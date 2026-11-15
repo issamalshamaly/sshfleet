@@ -45,6 +45,7 @@ def _host_from_stanza(
         user=stanza.user,
         port=stanza.port,
         proxy_jump=stanza.proxy_jump,
+        identity_file=stanza.identity_files[0] if stanza.identity_files else None,
         is_bastion=alias in bastions,
         role=HostRole.parse(override.role),
         runtime=runtime,

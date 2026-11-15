@@ -261,6 +261,8 @@ export interface HostSettings {
   user: string | null;
   port: number | null;
   proxy_jump: string | null;
+  /** The stanza's first IdentityFile, as written; null when it has none. */
+  identity_file: string | null;
   is_bastion: boolean;
   main: boolean;
   label: string;

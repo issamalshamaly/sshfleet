@@ -113,6 +113,7 @@ def _host_payload(state: WebState, host) -> dict[str, Any]:
         "user": host.user,
         "port": host.port,
         "proxy_jump": host.proxy_jump,
+        "identity_file": host.identity_file,
         "is_bastion": host.is_bastion,
         "main": host.main,
         "label": host.log_label,

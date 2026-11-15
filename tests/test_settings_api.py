@@ -146,6 +146,29 @@ async def test_a_host_can_be_made_direct_and_given_a_new_address(web, sample_env
     assert "Host tst-auth" in sample_env_file.read_text()  # its neighbour survived
 
 
+async def test_a_hosts_identity_file_is_listed_so_the_form_can_show_and_clear_it(web, sample_env_file):
+    """The edit form starts from the listing; without the path there it opened empty, looking
+    as though the key had never been saved."""
+    client, _ = web
+    listed = {h["alias"]: h for h in (await client.get("/api/settings/hosts")).json()}
+    assert listed["tst-bastion"]["identity_file"] == "~/.ssh/test.pem"
+    assert listed["tst-order"]["identity_file"] is None
+
+    response = await client.patch("/api/settings/hosts/tst-order", json={"identity_file": "~/.ssh/order_key"})
+    assert response.status_code == 200, response.text
+    assert response.json()["reload"]["changed"] == ["tst-order"]
+    listed = {h["alias"]: h for h in (await client.get("/api/settings/hosts")).json()}
+    assert listed["tst-order"]["identity_file"] == "~/.ssh/order_key"
+
+    # Clearing the field removes the line, and only from that host's stanza.
+    response = await client.patch("/api/settings/hosts/tst-order", json={"identity_file": ""})
+    assert response.status_code == 200, response.text
+    assert "order_key" not in sample_env_file.read_text()
+    assert "IdentityFile ~/.ssh/test.pem" in sample_env_file.read_text()
+    listed = {h["alias"]: h for h in (await client.get("/api/settings/hosts")).json()}
+    assert listed["tst-order"]["identity_file"] is None
+
+
 async def test_a_parent_that_would_loop_is_refused(web):
     client, _ = web
     response = await client.patch("/api/settings/hosts/tst-bastion", json={"proxy_jump": "tst-order"})

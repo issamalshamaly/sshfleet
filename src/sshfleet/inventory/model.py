@@ -54,6 +54,8 @@ class Host:
     user: str | None = None
     port: int | None = None
     proxy_jump: str | None = None
+    #: The stanza's first ``IdentityFile`` — a path as written, never opened.
+    identity_file: str | None = None
     is_bastion: bool = False
     role: str = "service"
     runtime: str | None = None  # docker | podman | none | None (probe on the host)

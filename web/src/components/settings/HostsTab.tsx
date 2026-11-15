@@ -140,7 +140,7 @@ function HostModal({
             user: editing.user ?? "",
             port: editing.port ?? "",
             proxyJump: editing.proxy_jump ?? "",
-            identityFile: "",
+            identityFile: editing.identity_file ?? "",
             display: editing.display ?? "",
             label: editing.label ?? "",
             role: editing.role ?? "service",
@@ -209,7 +209,8 @@ function HostModal({
       if (form.user.trim() !== (editing.user ?? "")) patch.user = form.user.trim();
       if (String(form.port ?? "") !== String(editing.port ?? "")) patch.port = form.port === "" ? null : Number(form.port);
       if (form.proxyJump !== (editing.proxy_jump ?? "")) patch.proxy_jump = form.proxyJump;
-      if (form.identityFile.trim()) patch.identity_file = form.identityFile.trim();
+      // "" removes the line, handing the host back to the environment key.
+      if (form.identityFile.trim() !== (editing.identity_file ?? "")) patch.identity_file = form.identityFile.trim();
       if (form.display.trim() !== (editing.display ?? "")) patch.display = form.display.trim();
       if (form.label.trim() !== (editing.label ?? "")) patch.label = form.label.trim();
       if (form.role !== editing.role) patch.role = form.role;
