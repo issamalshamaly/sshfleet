@@ -54,13 +54,14 @@ def _one_line(value: object, what: str) -> str:
 
 
 def _render_alias_match(prefix: str | None, aliases: list[str]) -> list[str]:
-    """``Host acme-prod-*`` when there is a shared prefix, else explicit alias lines."""
+    """``Host acme-prod-*`` when there is a shared prefix, else every alias on one ``Host`` line.
+
+    One line, however long: each ``Host`` line opens a block of its own, so aliases spread over
+    several lines would leave all but the last line with an empty block — and without the key.
+    """
     if prefix:
         return [f"Host {prefix}*"]
-    lines = []
-    for start in range(0, len(aliases), 8):
-        lines.append("Host " + " ".join(aliases[start : start + 8]))
-    return lines
+    return ["Host " + " ".join(aliases)]
 
 
 @dataclass(slots=True)

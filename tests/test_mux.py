@@ -81,6 +81,30 @@ def test_explicit_alias_list_when_there_is_no_common_prefix(paths, tmp_path: Pat
 
 
 @pytest.mark.skipif(shutil.which("ssh") is None, reason="needs the OpenSSH client to parse the config")
+def test_every_host_of_a_long_alias_list_gets_the_environment_key(paths, tmp_path: Path):
+    """Each ``Host`` line opens its own block. The alias list used to be wrapped at eight per
+    line, so only the last line's hosts got the key — the rest fell back to the default keys
+    and were refused behind the bastion."""
+    from sshfleet.config import Config, EnvironmentCfg
+    from sshfleet.inventory import build_inventory
+
+    names = [f"{word}{n}" for n in range(6) for word in ("web", "api", "db")]  # 18, no shared prefix
+    env_file = tmp_path / "mixed"
+    env_file.write_text("".join(f"Host {name}\n    HostName 192.0.2.{i + 1}\n" for i, name in enumerate(names)))
+    key = tmp_path / "k.pem"
+    key.write_text("x")
+    config = Config(environments=[EnvironmentCfg(name="mixed", ssh_config_path=env_file, key_path=key)])
+    manager = MuxManager(config, paths, build_inventory(config))
+    path = manager.write_ssh_config()
+
+    for name in names:
+        resolved = subprocess.run(
+            ["ssh", "-F", str(path), "-G", name], capture_output=True, text=True, check=True
+        ).stdout
+        assert f"identityfile {key}" in resolved, name
+
+
+@pytest.mark.skipif(shutil.which("ssh") is None, reason="needs the OpenSSH client to parse the config")
 def test_every_environment_file_is_read_whatever_came_before_it(paths, tmp_path: Path):
     """An Include inside a Host block is conditional in OpenSSH: the file is read only for hosts
     matching that block. An environment without a key followed the previous one's key block,
